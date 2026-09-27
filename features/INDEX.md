@@ -13,9 +13,19 @@
 
 ## Features
 
-| ID | Feature | Status | Spec | Created |
-|----|---------|--------|------|---------|
+| ID | Feature | Priority | Dependencies | Status | Spec | Created |
+|----|---------|----------|--------------|--------|------|---------|
+| PROJ-1 | Supabase-Infrastruktur (self-hosted, Multi-Tenant-Grundschema, Env-Setup, Auth-Konfiguration) | P0 | None | Roadmap | - | 2026-09-27 |
+| PROJ-2 | Benutzerverwaltung & Rollen-/Rechtesystem (pro Maske einstellbar) | P0 | PROJ-1 | Roadmap | - | 2026-09-27 |
+| PROJ-3 | Warenwirtschaft – Artikelstamm | P0 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
+| PROJ-4 | Warenwirtschaft – Adressen | P1 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
+| PROJ-5 | Warenwirtschaft – Lager | P1 | PROJ-1, PROJ-2, PROJ-3 | Roadmap | - | 2026-09-27 |
+| PROJ-6 | Warenwirtschaft – Einkauf | P1 | PROJ-1, PROJ-2, PROJ-3, PROJ-4 | Roadmap | - | 2026-09-27 |
+| PROJ-7 | Warenwirtschaft – Verkauf | P1 | PROJ-1, PROJ-2, PROJ-3, PROJ-4 | Roadmap | - | 2026-09-27 |
+| PROJ-8 | Produktionsplanung | P1 | PROJ-1, PROJ-2, PROJ-3, PROJ-5 | Roadmap | - | 2026-09-27 |
+| PROJ-9 | Wartung (Aufgabenplanung & Team-Verteilung) | P2 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
+| PROJ-10 | Agenten-Automatisierungs-Layer | P2 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-1
+## Next Available ID: PROJ-11
