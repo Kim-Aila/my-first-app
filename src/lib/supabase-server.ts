@@ -17,7 +17,13 @@ export async function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
+              // Force httpOnly regardless of the library default so the session token is
+              // never readable via document.cookie (BUG-2, PROJ-1 QA).
+              cookieStore.set(name, value, {
+                ...options,
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+              })
             })
           } catch {
             // Called from a Server Component render — middleware refreshes the session instead.

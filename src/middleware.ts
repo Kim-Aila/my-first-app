@@ -17,8 +17,14 @@ export async function middleware(request: NextRequest) {
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({ request })
+          // Force httpOnly regardless of the library default so the session token is
+          // never readable via document.cookie (BUG-2, PROJ-1 QA).
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, {
+              ...options,
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production",
+            })
           )
         },
       },

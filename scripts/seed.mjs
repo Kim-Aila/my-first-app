@@ -23,6 +23,24 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const adminUsername = process.env.SEED_ADMIN_USERNAME
 const adminEmail = process.env.SEED_ADMIN_EMAIL
 const adminPassword = process.env.SEED_ADMIN_PASSWORD
+
+// Password policy (spec AC-4): min. 8 characters, upper + lower + digit + special character.
+const passwordRules = [
+  { test: (pw) => pw.length >= 8, message: "mindestens 8 Zeichen" },
+  { test: (pw) => /[A-Z]/.test(pw), message: "einen Großbuchstaben" },
+  { test: (pw) => /[a-z]/.test(pw), message: "einen Kleinbuchstaben" },
+  { test: (pw) => /[0-9]/.test(pw), message: "eine Zahl" },
+  { test: (pw) => /[^A-Za-z0-9]/.test(pw), message: "ein Sonderzeichen" },
+]
+const failedRules = passwordRules.filter((rule) => !rule.test(adminPassword))
+if (failedRules.length > 0) {
+  console.error(
+    `Seed abgebrochen: SEED_ADMIN_PASSWORD erfüllt die Passwortrichtlinie nicht. Es fehlt: ${failedRules
+      .map((r) => r.message)
+      .join(", ")}.`
+  )
+  process.exit(1)
+}
 const tenantName = process.env.SEED_TENANT_NAME || "Default"
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
