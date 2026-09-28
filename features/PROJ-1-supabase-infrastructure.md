@@ -1,6 +1,6 @@
 # PROJ-1: Supabase-Infrastruktur (Self-Hosted, Multi-Tenant-Grundschema)
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-09-28
 **Last Updated:** 2026-09-28
 
@@ -162,7 +162,88 @@ App
 - Passwortrichtlinie (AC 4: min. 8 Zeichen, Groß-/Klein, Zahl, Sonderzeichen) wird noch nicht serverseitig erzwungen, da es aktuell keine "Passwort setzen"-UI gibt (kommt mit PROJ-2); der Seed selbst validiert die Passwortstärke nicht
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-09-28
+**App URL:** http://localhost:3000 (self-hosted Supabase: http://127.0.0.1:54321)
+**Tester:** QA Engineer (AI)
+
+### Automated Tests
+- `npm test` (Vitest): 6/6 passing (`/api/auth/login` integration tests)
+- `npm run test:e2e` (Playwright): 5 tests written (`tests/PROJ-1-supabase-infrastructure.spec.ts`), covering unauthenticated redirect, login page fields, wrong-password error, successful login, logout. **Could not execute in this environment** — the Playwright browser install hung during the extraction step three times in a row (download completes at a consistent byte count, then stalls indefinitely at 0% CPU during unzip). This reproduced identically across a full cache wipe + retry, pointing to a sandbox/environment limitation rather than a code issue. Recommendation: run `npm run test:e2e` in a normal (non-sandboxed) terminal to execute this suite.
+- All manual verification below was run directly against the real local Supabase stack (not mocked), using disposable test accounts that were deleted afterward.
+
+### Acceptance Criteria Status
+
+#### AC-1: App connects to the local self-hosted Postgres instance on startup
+- [x] Confirmed implicitly — every test below required a working connection and all succeeded
+
+#### AC-2: Seed script creates default tenant + super-admin from env vars
+- [x] `npm run seed` created "Default" tenant + super-admin "admin"
+- [x] Re-running `npm run seed` detected both and skipped (idempotency edge case)
+
+#### AC-3: Super-admin login bypasses RLS tenant isolation
+- [x] Created a super-admin test account with **no** explicit `user_tenant_access` row for either of 2 tenants — it could still see both via the API, proving the bypass is a real, independent RLS exception (not just "happens to have access")
+
+#### AC-4: Password policy enforced (min 8 chars, upper/lower/digit/special)
+- [ ] BUG: Not enforced anywhere. `abcdefgh` (8 lowercase letters, no digit/special/uppercase) is accepted by Supabase Auth's `createUser` — only Supabase's own generic 6-character minimum applies. See BUG-1.
+
+#### AC-5: Wrong username/password shows remaining-attempts error
+- [x] Verified via direct API call: `{"error":"...","remainingAttempts":9}` on first wrong attempt, decrementing correctly on each subsequent one
+
+#### AC-6: 10 failed attempts → account locked for 15 minutes
+- [x] Sent 10 real consecutive failed attempts against the live stack — 10th response was `423` with `lockedUntil`
+- [x] Correct password while locked is still rejected with `423` (lock isn't bypassed by finally getting the password right)
+
+#### AC-7: Account unlocks after 15 minutes, counter resets
+- [x] Simulated lock expiry (`locked_until` moved to the past) — next correct login succeeded, and `failed_login_attempts`/`locked_until` were confirmed reset to `0`/`null` in the database
+
+#### AC-8: RLS blocks cross-tenant data, even via direct API access
+- [x] A regular (non-super-admin) test user with access to only 1 of 2 tenants could not see the second tenant — verified both through the JS client **and** a raw REST call with the user's own access token (bypassing any app-level filtering entirely)
+
+#### AC-9: Local Postgres/Supabase unreachable → clear error, not a crash
+- [x] Stopped the local Supabase stack and called the login API — got a clean `503 {"error":"Anmeldung derzeit nicht möglich..."}`, no stack trace or unhandled crash
+- [x] Home page under the same outage redirected to `/login` (fail-closed) rather than crashing — reasonable behavior for an auth guard, not treated as a bug
+
+### Edge Cases Status
+- [x] Missing seed env vars → script exits with a clear error (verified earlier during `/backend`, re-confirmed by code review)
+- [x] Seed run twice → idempotent, no duplicates (re-verified above)
+- [x] DB connection lost mid-operation → clean error response, not a silent failure (AC-9 above)
+- [x] User with tenant access but no permission rows → schema allows this (empty `permissions` table doesn't block login), matches spec intent
+- [x] Table without RLS → N/A, all 4 tables have RLS + `FORCE ROW LEVEL SECURITY` enabled (confirmed in migration + by the isolation tests above)
+
+### Security Audit Results (Red-Team)
+- [x] Authentication: protected pages correctly redirect to `/login` when unauthenticated (confirmed via curl; also caught and fixed a real bug earlier where middleware blocked its own login API route — now covered by this exact regression class in the E2E suite once it can run)
+- [x] Authorization / tenant isolation: cannot access another tenant's data, including via raw REST calls (AC-8)
+- [x] SQL injection: a `' OR '1'='1` style payload in the username field was handled safely (parameterized query via supabase-js) — treated as just another wrong username, no error or bypass
+- [x] Rate limiting / brute force: account lockout after 10 attempts confirmed live (AC-6)
+- [ ] BUG: Session cookie (`sb-127-auth-token`) is set **without the `HttpOnly` flag**. Confirmed via response headers on a successful login — only `Path`, `Expires`, `Max-Age`, `SameSite=lax` are present. See BUG-2.
+- [x] No secrets (service-role key, JWT secret) found in login page HTML or served client bundle
+
+### Bugs Found
+
+#### BUG-1: Password policy (AC-4) is not enforced anywhere
+- **Severity:** Medium
+- **Steps to Reproduce:**
+  1. Use the service-role client (or, later, any admin-facing "create user" flow) to create a user with password `abcdefgh`
+  2. Expected: rejected — spec requires min 8 chars + uppercase + lowercase + digit + special character
+  3. Actual: accepted — only Supabase Auth's generic 6-character minimum applies
+- **Priority:** Fix before `/deploy`, and definitely before PROJ-2 ships a user-creation UI that would expose this directly to admins choosing weak passwords
+
+#### BUG-2: Session cookie missing `HttpOnly` flag
+- **Severity:** High
+- **Steps to Reproduce:**
+  1. `POST /api/auth/login` with valid credentials
+  2. Inspect the `Set-Cookie` response header for `sb-127-auth-token`
+  3. Expected: `HttpOnly` present, so `document.cookie` in the browser cannot read the session token
+  4. Actual: flag is absent — any future XSS anywhere in the app (including future modules) could read and exfiltrate the session token directly via JavaScript, turning a page-level XSS bug into full account takeover
+- **Priority:** Fix before deployment — this is a foundational auth-flow property every later module inherits
+
+### Summary
+- **Acceptance Criteria:** 8/9 passed (AC-4 failed)
+- **Bugs Found:** 2 total (0 critical, 1 high, 1 medium, 0 low)
+- **Security:** Issues found (see BUG-2)
+- **Production Ready:** NO
+- **Recommendation:** Fix BUG-2 (HttpOnly cookie) and BUG-1 (password policy) in `/backend`, then re-run `/qa`. Also execute the already-written Playwright E2E suite in a non-sandboxed terminal to close out that gap.
 
 ## Deployment
 _To be added by /deploy_
