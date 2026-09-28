@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 
-const PUBLIC_PATHS = ["/login"]
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout"]
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request })
@@ -32,6 +32,9 @@ export async function middleware(request: NextRequest) {
   const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path))
 
   if (!user && !isPublicPath) {
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 })
+    }
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
