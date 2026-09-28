@@ -1,6 +1,6 @@
 # PROJ-1: Supabase-Infrastruktur (Self-Hosted, Multi-Tenant-Grundschema)
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-09-28
 **Last Updated:** 2026-09-28
 
@@ -49,7 +49,6 @@
 - Infrastruktur: Self-hosted Supabase (lokale PostgreSQL via Docker/Supabase CLI), keine Cloud-Instanz
 
 ## Open Questions
-- [ ] Wie wird Benutzername-Login technisch auf Supabase Auth (nativ E-Mail-basiert) abgebildet? → Für `/architecture`
 - [ ] Exaktes Schema für granulare Masken-Rechte (User × Mandant × Modul × Maske) wird erst mit PROJ-2 final festgelegt — PROJ-1 legt nur die Grundstruktur/Platzhalter an
 
 ## Decision Log
@@ -68,12 +67,64 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| Self-hosted Supabase (Docker/CLI) statt Supabase Cloud | Volle Datenhoheit, keine Abhängigkeit von externem Cloud-Anbieter, entspricht PRD-Konstraint | 2026-09-28 |
+| Login per Benutzername, echte E-Mail im Profil hinterlegt | Benutzername wird beim Login serverseitig zur hinterlegten E-Mail aufgelöst, mit der die eigentliche Supabase-Auth-Anmeldung erfolgt; E-Mail bleibt Stammdatum, kein Login-Merkmal | 2026-09-28 |
+| Mandantentrennung über Row-Level-Security in der Datenbank | Isolation wird in der DB selbst erzwungen, nicht nur in der App-Logik — schützt auch bei direktem API-Zugriff oder App-Fehlern | 2026-09-28 |
+| Super-Admin-Bypass als explizite, geprüfte RLS-Ausnahmeregel | Macht die mandantenübergreifende Ausnahme nachvollziehbar und auditierbar statt einer pauschalen "Alle Rechte"-Logik | 2026-09-28 |
+| Login-Sperre (Fehlversuche + Sperrzeit) serverseitig in der DB gespeichert | Kann nicht durch Neuladen der Seite oder Gerätewechsel umgangen werden | 2026-09-28 |
+| Zugriffsschutz über serverseitige Prüfung bei jedem Seitenaufruf | Stellt sicher, dass ungeschützte Seiten nicht versehentlich ohne Login erreichbar sind | 2026-09-28 |
+| Keine neuen npm-Pakete — `@supabase/supabase-js` und `zod` reichen aus | Bereits im Projekt vorhanden, deckt DB/Auth-Anbindung und Passwort-Validierung ab | 2026-09-28 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Komponentenstruktur
+
+```
+App
+├── Login-Seite
+│   ├── Eingabefeld: Benutzername
+│   ├── Eingabefeld: Passwort
+│   ├── Fehlermeldung (inkl. "noch X Versuche übrig")
+│   └── Sperr-Hinweis ("Account gesperrt, versuche es in X Minuten erneut")
+├── Auth-Schutzschicht (prüft bei jedem Seitenaufruf: eingeloggt? sonst → Login-Seite)
+└── Platzhalter-Startseite nach Login ("Eingeloggt als [Name/Super-Admin]")
+    (dient nur als Nachweis, dass Login funktioniert — der eigentliche Dashboard-Inhalt kommt mit späteren Modulen)
+```
+
+### B) Datenmodell (in einfacher Sprache)
+
+**Mandant** (Tenant)
+- Eindeutige ID, Name, Erstellungsdatum
+
+**Benutzer**
+- Eindeutige ID, Benutzername, E-Mail-Adresse (Stammdatum, kein Login-Merkmal), Passwort (verwaltet durch Supabase Auth), Kennzeichen "ist Super-Admin", Erstellungsdatum
+- Fehlversuchs-Zähler + Zeitpunkt bis wann gesperrt (für die 10-Versuche/15-Minuten-Sperre)
+
+**Benutzer-Mandant-Zuordnung**
+- Verknüpft einen Benutzer mit einem oder mehreren Mandanten (Mehrfachzuordnung möglich)
+- Enthält noch keine Modul-/Masken-Rechte — das ist die Grundlage, auf der PROJ-2 die granulare Rechtevergabe aufbaut
+
+**Rechte-Grundgerüst** (leer/Platzhalter in PROJ-1)
+- Struktur ist so angelegt, dass später pro Benutzer + Mandant + Modul + Maske einzeln festgelegt werden kann, was sichtbar ist — die eigentliche Befüllung/Oberfläche kommt mit PROJ-2
+
+**Speicherort:** Lokale, selbst gehostete PostgreSQL-Datenbank (über Supabase, via Docker)
+
+### C) Technische Entscheidungen (für PM verständlich)
+
+1. **Self-hosted Supabase statt Supabase Cloud** — läuft komplett lokal bei euch (Docker), ihr behaltet die volle Datenhoheit, keine Abhängigkeit von einem externen Cloud-Anbieter.
+2. **Benutzername als Login, echte E-Mail als Stammdatum** — der Benutzer bekommt seine echte E-Mail-Adresse im Profil hinterlegt. Auf der Login-Maske gibt er aber nur seinen Benutzernamen ein; dieser wird serverseitig zur hinterlegten E-Mail aufgelöst, mit der dann die eigentliche Anmeldung bei Supabase Auth erfolgt. Für den User bleibt es ein reiner Benutzername-Login.
+3. **Datenbank erzwingt die Mandantentrennung (Row-Level-Security)** — die Trennung der Mandanten-Daten wird direkt in der Datenbank abgesichert, nicht nur in der App. Das heißt: selbst wenn irgendwo in der App später ein Fehler passiert, kann ein Mandant technisch trotzdem nicht an die Daten eines anderen Mandanten kommen.
+4. **Super-Admin-Bypass als explizite Ausnahme-Regel** — der Super-Admin bekommt eine gesondert geprüfte, dokumentierte Ausnahme von der Mandantentrennung, statt einfach "alle Rechte" zu bekommen. Das macht die Ausnahme später überprüfbar (z.B. im Sicherheits-Audit bei `/qa`).
+5. **Login-Sperre wird in der Datenbank gespeichert, nicht im Browser** — Fehlversuche und Sperrzeit werden serverseitig gespeichert. Ein Neuladen der Seite oder ein anderes Gerät kann die Sperre also nicht umgehen.
+6. **Zugriffsschutz auf Seitenebene** — jede Seite prüft automatisch, ob ein gültiger Login vorliegt, bevor Inhalte angezeigt werden; ohne Login geht es immer zurück zur Login-Seite.
+
+### D) Abhängigkeiten (Pakete)
+- `@supabase/supabase-js` — bereits installiert, Verbindung zur Datenbank & Auth
+- Supabase CLI — kein npm-Paket, sondern ein lokales Tool zum Starten/Verwalten der self-hosted Supabase-Instanz (Docker-basiert)
+- Keine neuen Pakete nötig — `zod` (Validierung, z.B. Passwortrichtlinie) ist bereits vorhanden
 
 ## QA Test Results
 _To be added by /qa_

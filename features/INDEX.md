@@ -15,7 +15,7 @@
 
 | ID | Feature | Priority | Dependencies | Status | Spec | Created |
 |----|---------|----------|--------------|--------|------|---------|
-| PROJ-1 | Supabase-Infrastruktur (self-hosted, Multi-Tenant-Grundschema, Env-Setup, Auth-Konfiguration) | P0 | None | Planned | [PROJ-1](PROJ-1-supabase-infrastructure.md) | 2026-09-27 |
+| PROJ-1 | Supabase-Infrastruktur (self-hosted, Multi-Tenant-Grundschema, Env-Setup, Auth-Konfiguration) | P0 | None | Architected | [PROJ-1](PROJ-1-supabase-infrastructure.md) | 2026-09-27 |
 | PROJ-2 | Benutzerverwaltung & Rollen-/Rechtesystem (pro Maske einstellbar) | P0 | PROJ-1 | Roadmap | - | 2026-09-27 |
 | PROJ-3 | Warenwirtschaft – Artikelstamm | P0 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
 | PROJ-4 | Warenwirtschaft – Adressen | P1 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
