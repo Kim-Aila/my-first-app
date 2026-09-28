@@ -61,6 +61,10 @@ const config: Config = {
   				ring: 'hsl(var(--sidebar-ring))'
   			}
   		},
+  		fontFamily: {
+  			sans: ['var(--font-instrument-sans)', 'Segoe UI', 'system-ui', 'sans-serif'],
+  			display: ['var(--font-fraunces)', 'Georgia', 'serif']
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

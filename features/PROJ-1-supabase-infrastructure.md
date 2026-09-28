@@ -1,6 +1,6 @@
 # PROJ-1: Supabase-Infrastruktur (Self-Hosted, Multi-Tenant-Grundschema)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-09-28
 **Last Updated:** 2026-09-28
 
@@ -125,6 +125,18 @@ App
 - `@supabase/supabase-js` — bereits installiert, Verbindung zur Datenbank & Auth
 - Supabase CLI — kein npm-Paket, sondern ein lokales Tool zum Starten/Verwalten der self-hosted Supabase-Instanz (Docker-basiert)
 - Keine neuen Pakete nötig — `zod` (Validierung, z.B. Passwortrichtlinie) ist bereits vorhanden
+
+## Implementation Notes (Frontend)
+
+**Gebaut:**
+- Design-System aus `docs/design-system.md` als Tailwind-Theme umgesetzt (`src/app/globals.css`, `tailwind.config.ts`): warme Farbpalette (inkl. Dark-Mode-Variante), Fraunces (Headings) + Instrument Sans (Body) via `next/font/google` in `src/app/layout.tsx`
+- `src/app/login/page.tsx` + `src/components/login-form.tsx`: Login-Formular (Benutzername/Passwort) mit react-hook-form + zod, Lade-/Fehlerzustände inkl. "noch X Versuche übrig" und Sperr-Hinweis, generische Verbindungsfehler-Meldung
+- `src/app/page.tsx`: Platzhalter-Startseite nach Login
+
+**Bewusste Abweichungen / offene Anschlussstellen für `/backend`:**
+- Das Login-Formular ruft `POST /api/auth/login` auf — diese Route existiert noch nicht, wird von `/backend` implementiert (Benutzername→E-Mail-Auflösung, Supabase-Auth-Anmeldung, Fehlversuchs-/Sperr-Logik in der DB)
+- Die Startseite (`/`) ist aktuell **nicht** durch eine echte Session-Prüfung geschützt (kein Redirect zu `/login`) — die Auth-Schutzschicht aus dem Tech Design braucht die von `/backend` bereitgestellte Session-Validierung (Cookie/Middleware) und wird dann ergänzt
+- Passwortrichtlinien-Validierung (AC 4) betrifft das Anlegen/Setzen von Passwörtern (Seed/PROJ-2), nicht das Login-Formular selbst — daher hier keine Policy-Prüfung im Login-Formular
 
 ## QA Test Results
 _To be added by /qa_
