@@ -138,6 +138,29 @@ App
 - Die Startseite (`/`) ist aktuell **nicht** durch eine echte Session-Prüfung geschützt (kein Redirect zu `/login`) — die Auth-Schutzschicht aus dem Tech Design braucht die von `/backend` bereitgestellte Session-Validierung (Cookie/Middleware) und wird dann ergänzt
 - Passwortrichtlinien-Validierung (AC 4) betrifft das Anlegen/Setzen von Passwörtern (Seed/PROJ-2), nicht das Login-Formular selbst — daher hier keine Policy-Prüfung im Login-Formular
 
+## Implementation Notes (Backend)
+
+**Gebaut:**
+- Lokales, self-hosted Supabase-Projekt initialisiert (`supabase/`, via `npx supabase` — kein globales Install nötig)
+- Migrationen (`supabase/migrations/`): `tenants`, `user_profiles` (Benutzername, echte E-Mail, Super-Admin-Flag, Fehlversuchs-Zähler, Sperrzeit), `user_tenant_access` (m:n), `permissions` (leeres Grundgerüst für PROJ-2), passende Indizes
+- Helper-Funktionen `is_super_admin()` / `has_tenant_access(tenant_id)` (SECURITY DEFINER) + RLS-Policies (inkl. `FORCE ROW LEVEL SECURITY`) auf allen vier Tabellen
+- `scripts/seed.mjs` (`npm run seed`): idempotentes Seed von Default-Mandant + Super-Admin aus Env-Vars
+- `src/lib/supabase.ts` (Browser-Client), `src/lib/supabase-server.ts` (Cookie-Session-Client), `src/lib/supabase-admin.ts` (Service-Role-Client, server-only)
+- `POST /api/auth/login`: Benutzername→E-Mail-Auflösung, Sperr-Check, echte Supabase-Auth-Anmeldung, Fehlversuchs-Zähler + 15-Min-Sperre ab 10 Versuchen, Reset bei Erfolg
+- `POST /api/auth/logout`, `src/middleware.ts` (schützt alle Routen außer `/login`, Session-Refresh)
+- `src/app/page.tsx` liest jetzt die echte Session/das Profil statt eines Platzhaltertexts
+- 6 Vitest-Integrationstests für `/api/auth/login` (Validierung, unbekannter User, Sperre, Fehlversuch-Zähler, Sperr-Auslösung, erfolgreicher Login) — alle grün
+
+**Manuell gegen den echten lokalen Stack verifiziert** (Migrationen wurden sauber angewendet):
+- Seed erstellt Mandant + Super-Admin; erneuter Lauf erkennt beides und überspringt (Idempotenz, Edge Case aus der Spec)
+- Echter Login mit falschem Passwort schlägt fehl, mit korrektem Passwort gelingt er (via Supabase Auth, nicht gemockt)
+- RLS greift wirklich: ein reguläres (Nicht-Super-Admin-)Testkonto mit Zugriff auf nur einen Mandanten konnte einen zweiten Mandanten über die API nicht sehen — Test-Accounts danach wieder entfernt
+
+**Bewusste Abweichungen / offen für `/qa`:**
+- Login-Sperre wurde nur über Unit-Tests (gemockt) und die "10. Versuch → Sperre"-Logik geprüft, nicht live 10x gegen den echten Stack durchgeklickt — sollte in `/qa` einmal live nachvollzogen werden
+- `.env.local.example` konnte ich nicht ergänzen (Security-Regel verbietet mir jeden Zugriff auf `.env*`-Dateien) — der Nutzer hat die nötigen Variablen (`SUPABASE_SERVICE_ROLE_KEY`, `SEED_*`) selbst dokumentiert bekommen und muss sie manuell in `.env.local` bzw. `.env.local.example` eintragen
+- Passwortrichtlinie (AC 4: min. 8 Zeichen, Groß-/Klein, Zahl, Sonderzeichen) wird noch nicht serverseitig erzwungen, da es aktuell keine "Passwort setzen"-UI gibt (kommt mit PROJ-2); der Seed selbst validiert die Passwortstärke nicht
+
 ## QA Test Results
 _To be added by /qa_
 
