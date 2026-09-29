@@ -3,10 +3,11 @@
 // (e.g. resolving a login username to an email, tracking failed-login lockout state).
 // Never import this from a Client Component or expose SUPABASE_SERVICE_ROLE_KEY to the browser.
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { getServerSupabaseUrl } from "./supabase-url"
 
 export function createAdminClient() {
   return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    getServerSupabaseUrl(),
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: { autoRefreshToken: false, persistSession: false },

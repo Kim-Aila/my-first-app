@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.env*
+!.env.local.example
+supabase/.branches
+supabase/.temp
+coverage
+playwright-report
+test-results
+tests
+*.md
+Dockerfile
+docker-compose.yml
+.dockerignore
