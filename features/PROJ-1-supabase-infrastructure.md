@@ -251,7 +251,8 @@ App
 
 **Deployed:** 2026-09-29
 **Target:** Self-hosted Docker container on the user's own machine (not Vercel) — internal-only tool, decided against Vercel since Supabase is already self-hosted locally
-**Access:** `http://localhost:3000`, bound to `127.0.0.1` only (not reachable from the LAN yet — planned for later, see below)
+**Access:** `http://localhost:3001`, bound to `127.0.0.1` only (not reachable from the LAN yet — planned for later, see below). Host port 3001 rather than 3000 because 3000 is already used by `npm run dev` on this machine; the container listens on 3000 internally.
+**Verified live:** container built and started via `docker compose --env-file .env.local up -d`; `/login` returns `HTTP 200`; `POST /api/auth/login` with bad credentials returns a real `401` from Supabase (not a connection error), confirming the server-side `host.docker.internal` routing works end-to-end.
 
 **Pre-deployment checks (all passed):**
 - `npm run build` — succeeded
