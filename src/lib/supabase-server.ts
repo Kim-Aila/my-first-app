@@ -2,7 +2,7 @@
 // Server Actions and Route Handlers that need the current user's session.
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { getServerSupabaseUrl } from "./supabase-url"
+import { getServerSupabaseUrl, getCookieSecure } from "./supabase-url"
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -23,7 +23,7 @@ export async function createClient() {
               cookieStore.set(name, value, {
                 ...options,
                 httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
+                secure: getCookieSecure(),
               })
             })
           } catch {

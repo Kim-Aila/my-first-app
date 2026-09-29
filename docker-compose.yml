@@ -32,3 +32,8 @@ services:
       # Overrides NEXT_PUBLIC_SUPABASE_URL for server-side code only — the
       # container's own 127.0.0.1 is itself, not the host running Supabase.
       SUPABASE_URL: http://host.docker.internal:54321
+      # No TLS/reverse proxy in front yet (local-only access) — without this,
+      # the session cookie's Secure flag (forced on by NODE_ENV=production)
+      # gets dropped by the browser over plain HTTP. Remove/set to true once
+      # this sits behind HTTPS (e.g. when going LAN-wide with a reverse proxy).
+      COOKIE_SECURE: "false"

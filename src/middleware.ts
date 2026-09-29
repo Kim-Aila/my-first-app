@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { createServerClient } from "@supabase/ssr"
-import { getServerSupabaseUrl } from "./lib/supabase-url"
+import { getServerSupabaseUrl, getCookieSecure } from "./lib/supabase-url"
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout"]
 
@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
             response.cookies.set(name, value, {
               ...options,
               httpOnly: true,
-              secure: process.env.NODE_ENV === "production",
+              secure: getCookieSecure(),
             })
           )
         },
