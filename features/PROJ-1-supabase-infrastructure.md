@@ -266,9 +266,23 @@ App
 
 **Docker setup:**
 - `Dockerfile`: multi-stage build (deps → builder → runner) on `node:22-alpine`, non-root user, uses `next.config.ts`'s new `output: "standalone"`. Verified: image builds and the container serves `/login` with `HTTP 200`.
-- `docker-compose.yml`: runs the app container only — self-hosted Supabase keeps running separately via `npx supabase start`, as before. Port published as `127.0.0.1:3000:3000` (local-machine access only, per user decision).
+- `docker-compose.yml`: runs the app container only — self-hosted Supabase keeps running separately via `npx supabase start`, as before. Port published as `127.0.0.1:3001:3000` (local-machine access only, per user decision; host port 3001 since 3000 was taken by `npm run dev`).
 - **Server/browser URL split:** `NEXT_PUBLIC_SUPABASE_URL` is baked into the browser bundle at build time and stays `http://127.0.0.1:54321` (correct since the browser runs on the same host). Server-side code running *inside* the container can't reach the host via `127.0.0.1` (that's the container's own loopback), so a new optional `SUPABASE_URL` env var (`http://host.docker.internal:54321`) overrides the URL for server-side Supabase clients only. New shared helper: `src/lib/supabase-url.ts`, used by `supabase-server.ts`, `supabase-admin.ts` and `middleware.ts`. Falls back to `NEXT_PUBLIC_SUPABASE_URL` when unset, so non-Docker local dev (`npm run dev`) is unaffected.
 - Run with: `docker compose --env-file .env.local build && docker compose --env-file .env.local up -d`
+
+**Bug found & fixed during deployment:**
+
+#### BUG-3: Session cookie `Secure` flag dropped the session on the self-hosted Docker deployment — FIXED
+- **Severity:** High (login appeared to succeed but never actually worked)
+- **Steps to Reproduce:**
+  1. Log in via `http://localhost:3001` (the Docker container) with valid credentials
+  2. `POST /api/auth/login` returns `200 {"success":true}`
+  3. Expected: redirected to `/` and stays logged in
+  4. Actual (before fix): bounced back to `/login` — the session never stuck
+- **Root Cause:** `secure: process.env.NODE_ENV === "production"` on the session cookie (in `supabase-server.ts` and `middleware.ts`) conflated "optimized build" with "served over HTTPS" — true for Vercel, but the Docker container is `NODE_ENV=production` while served over plain HTTP (no reverse-proxy TLS yet). Browsers drop `Secure` cookies over an insecure origin, so the cookie set on login was silently discarded.
+- **Fix:** Added an explicit `COOKIE_SECURE` override (`getCookieSecure()` in `src/lib/supabase-url.ts`), defaulting to the prior `NODE_ENV`-based behavior (so a real HTTPS deployment needs zero config changes) and set to `false` in `docker-compose.yml` for this HTTP-only local deployment.
+- **Verified live:** reproduced and confirmed fixed using a disposable test account (created/deleted via the Admin API, same pattern as `/qa`) — `Set-Cookie` no longer carries `Secure`; user confirmed login now works on port 3001.
+- **Note for later:** when this moves behind a reverse proxy with HTTPS (LAN-wide rollout), `COOKIE_SECURE` should be removed or set back to `true`.
 
 **Deferred (explicit user decision, not a bug):**
 - Network-wide (LAN) access — deferred to a later iteration. To enable later: change the port mapping to `"3000:3000"` (or bind to the LAN IP), rebuild with `NEXT_PUBLIC_SUPABASE_URL` set to the machine's LAN address instead of `127.0.0.1` (rebuild required — it's baked in at build time, not read at runtime), and reachability of the Supabase API itself from other devices on the network will need the same treatment.
