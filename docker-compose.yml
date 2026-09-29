@@ -21,7 +21,8 @@ services:
     image: my-first-app:latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      # Host port 3001 (3000 is taken by `npm run dev`); container listens on 3000 internally.
+      - "127.0.0.1:3001:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
