@@ -2,7 +2,7 @@
 
 ## Status: Planned
 **Created:** 2026-09-29
-**Last Updated:** 2026-09-29
+**Last Updated:** 2026-09-29 (Architecture)
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — nutzt `tenants`, `user_profiles`, `user_tenant_access`, `permissions` als Grundgerüst; Login/Session/RLS-Basis ist bereits vorhanden
@@ -98,12 +98,81 @@
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| Alte, ungenutzte `permissions`-Platzhaltertabelle aus PROJ-1 wird per Migration entfernt und durch `roles`, `role_permissions`, `user_roles` ersetzt | Passt nicht mehr zum in PROJ-2 gewählten Rollenmodell (Bündel statt Einzel-Rechte); Tabelle war noch nie befüllt, kein Datenverlust | 2026-09-29 |
+| Neue Tabelle `roles` (gehört zu einem Mandanten, Name eindeutig je Mandant) | Bildet "Rollen pro Mandant" aus der Spec ab | 2026-09-29 |
+| Neue Tabelle `role_permissions` (Rolle → Modul + Maske) statt separater Maskenregister-Tabelle | Modul/Maske werden direkt am Rollen-Recht gespeichert; neue Module führen einfach neue Maskennamen ein, ohne Schema-Änderung | 2026-09-29 |
+| Neue Tabelle `user_roles` (User + Mandant + Rolle, mehrere Zeilen pro User/Mandant möglich) | Bildet additive Mehrfachrollen pro User und Mandant ab | 2026-09-29 |
+| Neues Feld "global aktiv" auf `user_profiles` statt separater Status-Tabelle | Einfachste Abbildung der globalen Deaktivierung, konsistent mit bestehenden Feldern wie dem Sperr-Status aus PROJ-1 | 2026-09-29 |
+| Mandanten-Admin-Erkennung über Rollenzugriff auf Maske "Benutzerverwaltung" statt eigenes Boolean-Feld | Vermeidet ein zweites, parallel zu pflegendes Berechtigungskonzept neben dem Rollenmodell | 2026-09-29 |
+| "Letzter Super-Admin bleibt erhalten"-Regel wird serverseitig vor dem Speichern geprüft (nicht nur clientseitig) | Kann sonst über direkten API-Aufruf umgangen werden; konsistent mit Security-Regeln des Projekts | 2026-09-29 |
+| Alle neuen Tabellen (`roles`, `role_permissions`, `user_roles`) erhalten RLS-Policies + Indizes wie die bestehenden PROJ-1-Tabellen | Verpflichtend laut Projekt-Backend-Regeln ("Never skip RLS"); wird von `/backend` konkret umgesetzt | 2026-09-29 |
+| Keine neuen npm-Pakete | Vorhandene shadcn/ui-Komponenten und react-hook-form/zod decken alle neuen Formulare/Listen ab | 2026-09-29 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Komponentenstruktur
+
+```
+App (nach Login)
+├── Sidebar-Navigation
+│   └── Menüpunkt "Benutzerverwaltung" (nur sichtbar für User mit Zugriff auf diese Maske)
+│
+├── Benutzerverwaltung (pro Mandant — für Mandanten-Admin & Super-Admin)
+│   ├── Tab "Benutzer"
+│   │   ├── Benutzerliste (Benutzername, zugewiesene Rollen, Status)
+│   │   ├── "Neuer Benutzer"-Formular (Benutzername, E-Mail, Initial-Passwort, Rollen-Auswahl per Checkbox)
+│   │   └── Aktion pro Zeile: "Aus diesem Mandanten entfernen"
+│   └── Tab "Rollen"
+│       ├── Rollenliste (Name, Anzahl Masken, Anzahl zugewiesener User)
+│       ├── "Neue Rolle"-Formular (Name, Masken-Auswahl per Checkbox)
+│       └── Rolle bearbeiten / löschen
+│
+├── Mandantenverwaltung (nur Super-Admin, mandantenübergreifend)
+│   ├── Mandantenliste
+│   └── "Neuer Mandant"-Formular (Name) / Mandant umbenennen
+│
+├── Globale Benutzerverwaltung (nur Super-Admin)
+│   ├── Liste aller User systemweit (mandantenübergreifend)
+│   ├── Schalter "Super-Admin" pro User (mit Schutz gegen Entzug des letzten Super-Admins)
+│   └── Aktion "Global (de)aktivieren" pro User
+│
+└── Profilbereich (jeder eingeloggte User)
+    └── "Passwort ändern"-Formular (aktuelles + neues Passwort nach Richtlinie)
+```
+
+### B) Datenmodell (in einfacher Sprache)
+
+**Bereits vorhanden aus PROJ-1 (unverändert nutzbar):**
+- **Mandant** — ID, Name, Erstellungsdatum
+- **Benutzer** — ID, Benutzername, E-Mail, Super-Admin-Kennzeichen, Login-Sperr-Felder
+- **Benutzer-Mandant-Zuordnung** — verknüpft einen Benutzer mit einem oder mehreren Mandanten; "aus Mandant entfernen" bedeutet, diese Zuordnung zu entfernen
+
+**Neu in PROJ-2:**
+- **Benutzer** erhält ein zusätzliches Feld "global aktiv" (Standard: aktiv) — deckt die globale Deaktivierung ab, unabhängig von der Mandantenzugehörigkeit
+- **Rolle** — gehört zu genau einem Mandanten, hat einen Namen (eindeutig innerhalb dieses Mandanten)
+- **Rollen-Maskenrechte** — legt fest, welche Masken (Modul + Maske) eine Rolle freischaltet
+- **Benutzer-Rollen-Zuordnung** — legt fest, welche Rolle(n) ein Benutzer innerhalb eines bestimmten Mandanten hat (mehrere Rollen pro Benutzer und Mandant möglich, additiv)
+
+**Ersetzt:** Die leere, noch ungenutzte Rechte-Platzhaltertabelle aus PROJ-1 (User × Mandant × Modul × Maske) wird entfernt und durch die drei neuen Rollen-Tabellen oben ersetzt — sie war als Grundgerüst bewusst noch offen gehalten, bis PROJ-2 das endgültige Rechtemodell (Rollen statt Einzel-Rechte) festlegt. Da die Tabelle nie befüllt wurde, gehen keine Daten verloren.
+
+**Kein separates "Maskenregister":** Modul- und Maskenname werden direkt in den Rollen-Maskenrechten gespeichert. Wenn ein künftiges Modul (z.B. PROJ-3 Artikelstamm) eine neue Maske einführt, trägt es einfach einen neuen Maskennamen in diese Tabelle ein — keine Schema-Änderung nötig.
+
+**Speicherort:** Wie bei PROJ-1 die lokale, selbst gehostete PostgreSQL-Datenbank (Supabase).
+
+### C) Technische Entscheidungen (für PM verständlich)
+
+1. **Rollenbasiertes statt Einzel-Rechte-Modell** — passend zur Spec-Entscheidung, dass Rechte über wiederverwendbare Rollen statt einzeln pro User vergeben werden. Weniger Klickaufwand bei 30 Usern pro Mandant.
+2. **Mandanten-Admin-Status ergibt sich aus Rollenzugriff, kein eigenes Datenfeld** — wer über eine Rolle Zugriff auf die Maske "Benutzerverwaltung" hat, gilt als Mandanten-Admin. Vermeidet ein zweites, parallel zu pflegendes Berechtigungskonzept.
+3. **Alte Rechte-Platzhaltertabelle wird ersetzt, nicht daneben stehen gelassen** — verhindert verwirrenden toten Code im Datenmodell; unkritisch, da sie noch nie befüllt wurde.
+4. **Serverseitige Prüfung jeder Schreibaktion, nicht nur UI-Ausblendung** — sowohl "darf dieser User in diesem Mandanten Rollen/User verwalten?" als auch "bleibt mindestens ein Super-Admin übrig?" werden serverseitig vor dem Speichern geprüft, ergänzt durch Datenbank-Zugriffsschutz (RLS) als zweite Sicherheitsebene. Konsistent mit dem Sicherheitsmodell aus PROJ-1 und den Projekt-Sicherheitsregeln — verhindert Umgehung über direkte API-Aufrufe.
+5. **Initial-Passwort nutzt dieselbe Passwortrichtlinie wie das bestehende Seed-Skript** — keine doppelte Validierungslogik, ein einziger Ort für "was ist ein gültiges Passwort".
+6. **Keine neuen Pakete** — alle benötigten UI-Bausteine (Tabellen, Formulare, Checkboxen, Schalter, Tabs, Dialoge) sind über shadcn/ui bereits im Projekt vorhanden; Formulare nutzen wie bisher react-hook-form + zod.
+
+### D) Abhängigkeiten (Pakete)
+- Keine neuen npm-Pakete nötig — `@supabase/supabase-js`, `zod`, `react-hook-form` sowie die benötigten shadcn/ui-Komponenten (Table, Dialog, Checkbox, Switch, Tabs, Form) sind bereits installiert
 
 ## QA Test Results
 _To be added by /qa_
