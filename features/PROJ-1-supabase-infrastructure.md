@@ -1,8 +1,8 @@
 # PROJ-1: Supabase-Infrastruktur (Self-Hosted, Multi-Tenant-Grundschema)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-28
-**Last Updated:** 2026-09-28
+**Last Updated:** 2026-09-29
 
 ## Dependencies
 - None
@@ -248,4 +248,28 @@ App
 - **Recommendation:** Feature is functionally and security-wise ready. The Playwright E2E suite (5 tests) is written and the earlier cross-project race condition is fixed, but execution is blocked by a Playwright browser-install hang reproduced identically on two different machines (this sandbox and the user's own Mac) — download completes, extraction stalls indefinitely at 0% CPU. Deferred per user decision; revisit later (different machine, CI, or once root-caused) rather than blocking `/deploy`.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-09-29
+**Target:** Self-hosted Docker container on the user's own machine (not Vercel) — internal-only tool, decided against Vercel since Supabase is already self-hosted locally
+**Access:** `http://localhost:3000`, bound to `127.0.0.1` only (not reachable from the LAN yet — planned for later, see below)
+
+**Pre-deployment checks (all passed):**
+- `npm run build` — succeeded
+- `npm run lint` — passed (see tooling fix below)
+- `npm test` — 6/6 passing
+- QA: Approved, 9/9 acceptance criteria, 0 open bugs (see QA Test Results above)
+- No secrets committed — `.env*.local` gitignored, `.env.local.example` documents required vars
+- Not pushed to GitHub remote — user is self-hosting directly from the local machine, so a shared remote isn't required for this deployment
+
+**Tooling fix (unrelated to PROJ-1 itself, blocked `npm run lint`):** Next.js 16 removed the `next lint` subcommand and the project's `.eslintrc.json` doesn't work with ESLint 9. Replaced with `eslint.config.mjs` (using `eslint-config-next`'s native flat config) and pointed `npm run lint` at `eslint .` directly. Also fixed a `react-hooks/purity` error in the shadcn `sidebar.tsx` skeleton (`Math.random()` moved from `useMemo` to a `useState` lazy initializer — no behavior change).
+
+**Docker setup:**
+- `Dockerfile`: multi-stage build (deps → builder → runner) on `node:22-alpine`, non-root user, uses `next.config.ts`'s new `output: "standalone"`. Verified: image builds and the container serves `/login` with `HTTP 200`.
+- `docker-compose.yml`: runs the app container only — self-hosted Supabase keeps running separately via `npx supabase start`, as before. Port published as `127.0.0.1:3000:3000` (local-machine access only, per user decision).
+- **Server/browser URL split:** `NEXT_PUBLIC_SUPABASE_URL` is baked into the browser bundle at build time and stays `http://127.0.0.1:54321` (correct since the browser runs on the same host). Server-side code running *inside* the container can't reach the host via `127.0.0.1` (that's the container's own loopback), so a new optional `SUPABASE_URL` env var (`http://host.docker.internal:54321`) overrides the URL for server-side Supabase clients only. New shared helper: `src/lib/supabase-url.ts`, used by `supabase-server.ts`, `supabase-admin.ts` and `middleware.ts`. Falls back to `NEXT_PUBLIC_SUPABASE_URL` when unset, so non-Docker local dev (`npm run dev`) is unaffected.
+- Run with: `docker compose --env-file .env.local build && docker compose --env-file .env.local up -d`
+
+**Deferred (explicit user decision, not a bug):**
+- Network-wide (LAN) access — deferred to a later iteration. To enable later: change the port mapping to `"3000:3000"` (or bind to the LAN IP), rebuild with `NEXT_PUBLIC_SUPABASE_URL` set to the machine's LAN address instead of `127.0.0.1` (rebuild required — it's baked in at build time, not read at runtime), and reachability of the Supabase API itself from other devices on the network will need the same treatment.
+- HTTPS/reverse proxy (e.g. Caddy) — not needed for local-only access; revisit when going LAN-wide.
+- Playwright E2E suite — still blocked by the environment issue noted in QA; unrelated to this deployment.
