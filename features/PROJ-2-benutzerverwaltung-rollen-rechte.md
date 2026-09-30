@@ -1,8 +1,8 @@
 # PROJ-2: Benutzerverwaltung & Rollen-/Rechtesystem
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-29
-**Last Updated:** 2026-09-30 (QA re-verification)
+**Last Updated:** 2026-09-30 (Deployment)
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — nutzt `tenants`, `user_profiles`, `user_tenant_access`, `permissions` als Grundgerüst; Login/Session/RLS-Basis ist bereits vorhanden
@@ -406,4 +406,28 @@ Behebt BUG-2, -3, -4, -6, -7, -9, -10, -11 und mildert BUG-5 teilweise (BUG-1/-8
 #### BUG-12: PROJ-1 E2E suite broken by the new app shell — FIXED (Low)
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-09-30
+**Target:** Same self-hosted Docker container as PROJ-1 (`my-first-app-app-1`, not Vercel — this project deploys locally per the PRD constraint), rebuilt with the PROJ-2 code and restarted. Backed by the same local self-hosted Supabase instance used for development (`npx supabase start`); the three PROJ-2 migrations were already applied there during `/backend` and its bugfix round, so no separate "production" migration step was needed.
+**Access:** `http://localhost:3001`, same as PROJ-1 (bound to `127.0.0.1` only).
+
+**Pre-deployment checks (all passed):**
+- `npm run build` — succeeded, all new routes present (`/benutzerverwaltung`, `/mandanten`, `/globale-benutzer`, `/profil`, plus the new `/api/tenants/**`, `/api/users/**`, `/api/profile/password` routes)
+- `npm run lint` — clean
+- `npm test` — 118/118 passing
+- QA: Approved, 16/16 acceptance criteria, all 3 High bugs independently re-verified fixed (see QA Test Results above); 2 new Low findings (NEW-1, NEW-2) accepted as known limitations, not blocking
+- No secrets committed — reviewed each commit's diff before committing; no `.env*` files touched
+- No new environment variables introduced — PROJ-2 reuses the existing Supabase env vars from PROJ-1
+
+**Deploy steps run:**
+1. Committed the accumulated work in three commits (`feat(PROJ-2)` frontend, `feat(PROJ-2)` backend, `test(PROJ-2)` QA) — nothing had been committed incrementally during development per this project's "never auto-commit" rule, so these land the final, already-bugfixed state rather than replaying each development stage.
+2. `docker compose --env-file .env.local build` — succeeded
+3. `docker compose --env-file .env.local up -d` — container recreated and started
+4. Live-verified against `http://localhost:3001`: `/login` → 200, unauthenticated `/` → 307 redirect to `/login`, unauthenticated `POST /api/tenants` → 401, bad login credentials → 401 with `remainingAttempts` (not a connection error) — all as expected
+
+**Not pushed to GitHub remote** (a remote exists — `origin` — but wasn't pushed to, consistent with keeping deploy and remote-sharing as separate, explicit decisions). No git tag created yet either; PROJ-1 used `v1.0.0-PROJ-1` — a `v1.1.0-PROJ-2` tag can be added on request.
+
+**Deferred / not part of this deploy (pre-existing project debt, not introduced by PROJ-2):**
+- Error tracking (Sentry or alternative) — guide exists at `docs/production/error-tracking.md`, never actually wired up (not in PROJ-1's deploy either)
+- Security headers — guide exists at `docs/production/security-headers.md`, not yet added to `next.config.ts`
+- BUG-5 (login lockout bypassable via direct GoTrue calls) and NEW-1/NEW-2 (two-super-admin mutual-deactivation race; self-harm via direct API) — documented, accepted known limitations per user decision, candidates for a future `/refine`
