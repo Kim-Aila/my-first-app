@@ -22,8 +22,10 @@ test.describe("PROJ-1: Supabase-Infrastruktur — Login", () => {
     await page.getByLabel("Passwort").fill("definitely-wrong")
     await page.getByRole("button", { name: "Anmelden" }).click()
 
-    await expect(page.getByRole("alert")).toContainText("Noch")
-    await expect(page.getByRole("alert")).toContainText("Versuch")
+    // Next.js' route announcer also has role="alert" (empty) — only match the app's alert.
+    const alert = page.getByRole("alert").filter({ hasText: /\S/ })
+    await expect(alert).toContainText("Noch")
+    await expect(alert).toContainText("Versuch")
     await expect(page).toHaveURL(/\/login$/)
   })
 
@@ -34,7 +36,8 @@ test.describe("PROJ-1: Supabase-Infrastruktur — Login", () => {
     await page.getByRole("button", { name: "Anmelden" }).click()
 
     await expect(page).toHaveURL("/")
-    await expect(page.getByText(TEST_USERNAME)).toBeVisible()
+    // The username also appears in the sidebar user menu — assert on the page content only.
+    await expect(page.getByRole("main").getByText(TEST_USERNAME)).toBeVisible()
   })
 
   test("AC: logging out returns to the login page and blocks the home page again", async ({ page }) => {
@@ -44,7 +47,25 @@ test.describe("PROJ-1: Supabase-Infrastruktur — Login", () => {
     await page.getByRole("button", { name: "Anmelden" }).click()
     await expect(page).toHaveURL("/")
 
-    await page.getByRole("button", { name: "Abmelden" }).click()
+    // Logout lives in the sidebar user menu; on mobile the sidebar is an off-canvas sheet.
+    // Retried because clicks right after navigation can land before React has hydrated.
+    const userMenu = page.getByRole("button", { name: /^Benutzermenü/ })
+    const logoutItem = page.getByRole("menuitem", { name: "Abmelden" })
+    if (!(await userMenu.isVisible())) {
+      // Mobile: open the navigation sheet (a dialog) first.
+      const sheet = page.getByRole("dialog")
+      await expect(async () => {
+        if (!(await sheet.isVisible())) {
+          await page.getByRole("button", { name: "Navigation ein-/ausblenden" }).click()
+        }
+        await expect(userMenu).toBeVisible({ timeout: 3_000 })
+      }).toPass({ timeout: 15_000 })
+    }
+    await expect(async () => {
+      if (!(await logoutItem.isVisible())) await userMenu.click()
+      await expect(logoutItem).toBeVisible({ timeout: 3_000 })
+    }).toPass({ timeout: 15_000 })
+    await logoutItem.click()
     await expect(page).toHaveURL(/\/login$/)
 
     await page.goto("/")
