@@ -6,6 +6,7 @@ import { createClient as createServerClient } from "@/lib/supabase-server"
 
 export const MAX_LOGIN_ATTEMPTS = 10
 export const LOCKOUT_MINUTES = 15
+export const DEACTIVATED_MESSAGE = "Dieser Account wurde deaktiviert."
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
 
   const { data: profile, error: profileError } = await admin
     .from("user_profiles")
-    .select("id, email, failed_login_attempts, locked_until")
+    .select("id, email, failed_login_attempts, locked_until, is_active")
     .eq("username", username)
     .maybeSingle()
 
@@ -101,6 +102,14 @@ export async function POST(request: Request) {
     .from("user_profiles")
     .update({ failed_login_attempts: 0, locked_until: null })
     .eq("id", profile.id)
+
+  // PROJ-2: Global deaktivierte User werden erst NACH erfolgreicher Passwortprüfung abgelehnt —
+  // sonst würde der Deaktivierungs-Status an jemanden verraten, der nur Passwörter rät.
+  // signInWithPassword hat bereits ein Session-Cookie gesetzt, daher sofort wieder abmelden.
+  if (profile.is_active === false) {
+    await server.auth.signOut()
+    return NextResponse.json({ error: DEACTIVATED_MESSAGE }, { status: 403 })
+  }
 
   return NextResponse.json({ success: true })
 }
