@@ -110,12 +110,21 @@ async function passwordWorks(email: string, password: string) {
   return !error
 }
 
+// Retries: when the button is clicked before React has hydrated (slow dev server, WebKit), the form
+// is submitted natively and the page reloads on /login.
 async function login(page: Page, username: string, password = P2_PASSWORD) {
-  await page.goto("/login")
-  await page.getByLabel("Benutzername").fill(username)
-  await page.getByLabel("Passwort").fill(password)
-  await page.getByRole("button", { name: "Anmelden" }).click()
-  await expect(page).toHaveURL("/")
+  for (let attempt = 1; ; attempt++) {
+    await page.goto("/login")
+    await page.getByLabel("Benutzername").fill(username)
+    await page.getByLabel("Passwort").fill(password)
+    await page.getByRole("button", { name: "Anmelden" }).click()
+    try {
+      await expect(page).toHaveURL("/", { timeout: 8000 })
+      return
+    } catch (error) {
+      if (attempt >= 3) throw error
+    }
+  }
 }
 
 // On narrow screens the role-name cell also contains an "N Benutzer" sub-line.
@@ -169,7 +178,9 @@ test.describe("PROJ-2: Benutzerverwaltung & Rollen-/Rechtesystem", () => {
     await page.getByRole("button", { name: "Neue Rolle" }).click()
     let dialog = page.getByRole("dialog")
     await dialog.getByLabel("Name").fill("Administrator")
-    await dialog.getByLabel("Benutzerverwaltung").check()
+    // PROJ-3: masks are now chosen via an access select ("Kein Zugriff" / "Zugriff") instead of a checkbox
+    await dialog.getByRole("combobox", { name: "Benutzerverwaltung" }).click()
+    await page.getByRole("option", { name: "Zugriff", exact: true }).click()
     await dialog.getByRole("button", { name: "Rolle anlegen" }).click()
     await expect(roleCell(page, "Administrator")).toBeVisible()
 

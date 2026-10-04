@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// Port des Dev-Servers; per E2E_PORT änderbar, falls 3000 anderweitig belegt ist.
+const PORT = process.env.E2E_PORT ?? '3000'
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -9,7 +12,7 @@ export default defineConfig({
   globalSetup: './tests/global-setup.ts',
   globalTeardown: './tests/global-teardown.ts',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',
   },
   projects: [
@@ -17,8 +20,8 @@ export default defineConfig({
     { name: 'Mobile Safari', use: { ...devices['iPhone 13'] } },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
+    command: `npm run dev -- -p ${PORT}`,
+    url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
   },
 })

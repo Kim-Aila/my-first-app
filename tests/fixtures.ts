@@ -24,3 +24,21 @@ export const P2_REGULAR = "e2e_p2_regular"
 export const TEST_USERNAME = "e2e_proj1_test_user"
 export const TEST_EMAIL = "e2e-proj1@verification.local"
 export const TEST_PASSWORD = "E2E-Test-Pw9!"
+
+// PROJ-3 fixtures (created in global-setup, removed in global-teardown). Users use P3_EMAIL_DOMAIN,
+// tenants P3_TENANT_PREFIX, so teardown can sweep them (tenant deletion cascades to articles,
+// Merkmale, roles and locks).
+export const P3_EMAIL_DOMAIN = "e2e-proj3.local"
+export const P3_TENANT_PREFIX = "E2E-P3 "
+export const P3_TENANT = "E2E-P3 Mandant" // has Merkmale (Saison SOM=3, Artikeltyp FW=4, Basisartikel 1200)
+export const P3_TENANT_LEER = "E2E-P3 Leer" // no Merkmale at all
+export const P3_TENANT_FREMD = "E2E-P3 Fremd" // second tenant, for isolation tests
+export const P3_PASSWORD = "E2E-Proj3-Pw9!"
+export const P3_EINKAUF = "e2e_p3_einkauf" // Artikelstamm write + Merkmal masks write
+export const P3_EINKAUF2 = "e2e_p3_einkauf2" // same role, second person (lock conflicts)
+export const P3_LAGER = "e2e_p3_lager" // Artikelstamm read only
+export const P3_OHNE = "e2e_p3_ohne" // member, role without any Warenwirtschaft mask
+export const P3_LEER = "e2e_p3_leer" // Artikelstamm write in the empty tenant
+export const P3_FREMD = "e2e_p3_fremd" // Artikelstamm write in the foreign tenant only
+export const P3_MERKMAL_ONLY = "e2e_p3_saisonpflege" // only Merkmal Saisons write, no Artikelstamm
+export const P3_BASE_CODE = "1200"
