@@ -33,9 +33,51 @@ describe("PATCH /api/tenants/:tenantId/roles/:roleId", () => {
     expect(res.status).toBe(200)
     expect(server.callsTo("roles", "update")[0].payload).toEqual({ name: "Lager Nord" })
     expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
-      { role_id: IDS.role, ...MASK },
+      { role_id: IDS.role, ...MASK, access_level: "write" },
     ])
     expect(server.callsTo("role_permissions", "delete")).toHaveLength(0)
+  })
+
+  it("changes only the access level of a mask that stays (PROJ-3)", async () => {
+    server.loginAs({ id: IDS.caller })
+    server.tenantAdminRoles(true)
+    const ARTIKEL = { module: "warenwirtschaft", maske: "artikelstamm" }
+    server.respond("roles:select", {
+      data: {
+        id: IDS.role,
+        name: "Lager",
+        role_permissions: [{ id: "perm-1", ...ARTIKEL, access_level: "write" }],
+      },
+    })
+
+    const res = await PATCH(
+      jsonRequest(url, "PATCH", { name: "Lager", masks: [{ ...ARTIKEL, accessLevel: "read" }] }),
+      params()
+    )
+    expect(res.status).toBe(200)
+    expect(server.callsTo("role_permissions", "update")[0].payload).toEqual({ access_level: "read" })
+    expect(server.callsTo("role_permissions", "insert")).toHaveLength(0)
+    expect(server.callsTo("role_permissions", "delete")).toHaveLength(0)
+  })
+
+  it("does not touch a mask whose access level is unchanged", async () => {
+    server.loginAs({ id: IDS.caller })
+    server.tenantAdminRoles(true)
+    const ARTIKEL = { module: "warenwirtschaft", maske: "artikelstamm" }
+    server.respond("roles:select", {
+      data: {
+        id: IDS.role,
+        name: "Lager",
+        role_permissions: [{ id: "perm-1", ...ARTIKEL, access_level: "read" }],
+      },
+    })
+
+    const res = await PATCH(
+      jsonRequest(url, "PATCH", { name: "Lager", masks: [{ ...ARTIKEL, accessLevel: "read" }] }),
+      params()
+    )
+    expect(res.status).toBe(200)
+    expect(server.callsTo("role_permissions", "update")).toHaveLength(0)
   })
 
   it("keeps an unchanged admin mask untouched when renaming its own admin role (BUG-3)", async () => {

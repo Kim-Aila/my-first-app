@@ -33,8 +33,46 @@ describe("POST /api/tenants/:tenantId/roles", () => {
     })
     // Duplicates are collapsed.
     expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
-      { role_id: IDS.role, ...MASK },
+      { role_id: IDS.role, ...MASK, access_level: "write" },
     ])
+  })
+
+  it("stores the access level per mask; Benutzerverwaltung is always 'write' (PROJ-3)", async () => {
+    server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+    server.respond("roles:insert", { data: { id: IDS.role, name: "Lager" } })
+
+    const res = await post({
+      name: "Lager",
+      masks: [
+        { module: "warenwirtschaft", maske: "artikelstamm", accessLevel: "read" },
+        { ...MASK, accessLevel: "read" },
+      ],
+    })
+    expect(res.status).toBe(201)
+    expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
+      { role_id: IDS.role, module: "warenwirtschaft", maske: "artikelstamm", access_level: "read" },
+      { role_id: IDS.role, ...MASK, access_level: "write" },
+    ])
+  })
+
+  it("returns 400 for an invalid access level", async () => {
+    server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+    const res = await post({
+      name: "Lager",
+      masks: [{ module: "warenwirtschaft", maske: "artikelstamm", accessLevel: "admin" }],
+    })
+    expect(res.status).toBe(400)
+    expect(server.callsTo("roles", "insert")).toHaveLength(0)
+  })
+
+  it("accepts the new Warenwirtschaft masks", async () => {
+    server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+    server.respond("roles:insert", { data: { id: IDS.role, name: "Einkauf" } })
+    const res = await post({
+      name: "Einkauf",
+      masks: [{ module: "warenwirtschaft", maske: "merkmal_saison", accessLevel: "write" }],
+    })
+    expect(res.status).toBe(201)
   })
 
   it("creates a role without masks", async () => {

@@ -21,7 +21,7 @@ const ROLE_NOT_FOUND_MESSAGE = "Rolle nicht gefunden."
 interface ExistingRole {
   id: string
   name: string
-  role_permissions: { id: string; module: string; maske: string }[] | null
+  role_permissions: { id: string; module: string; maske: string; access_level: string | null }[] | null
 }
 
 // PATCH /api/tenants/:tenantId/roles/:roleId — Rolle umbenennen + Masken ersetzen (last-write-wins).
@@ -41,7 +41,7 @@ export async function PATCH(request: Request, { params }: Params) {
   // Rolle muss zu genau diesem Mandanten gehören (keine mandantenfremden Rollen-IDs).
   const { data: existingData, error: existingError } = await supabase
     .from("roles")
-    .select("id, name, role_permissions(id, module, maske)")
+    .select("id, name, role_permissions(id, module, maske, access_level)")
     .eq("id", roleId)
     .eq("tenant_id", tenantId)
     .maybeSingle()
@@ -69,18 +69,57 @@ export async function PATCH(request: Request, { params }: Params) {
   const previousKeys = new Set(previous.map(maskKey))
   const targetKeys = new Set(masks.map(maskKey))
   const toAdd = masks.filter((m) => !previousKeys.has(maskKey(m)))
+  // Maske bleibt, aber die Zugriffsstufe ändert sich → nur die Stufe aktualisieren (PROJ-3).
+  const previousLevels = new Map(previous.map((m) => [maskKey(m), m]))
+  const toUpdate = masks.flatMap((m) => {
+    const existingPermission = previousLevels.get(maskKey(m))
+    return existingPermission && (existingPermission.access_level ?? "write") !== m.accessLevel
+      ? [{ id: existingPermission.id, accessLevel: m.accessLevel, previousLevel: existingPermission.access_level ?? "write" }]
+      : []
+  })
   const toRemove = previous.filter((m) => !targetKeys.has(maskKey(m)))
 
   let addedIds: string[] = []
   if (toAdd.length > 0) {
     const { data: added, error: insertError } = await supabase
       .from("role_permissions")
-      .insert(toAdd.map((m) => ({ role_id: roleId, module: m.module, maske: m.maske })))
+      .insert(
+        toAdd.map((m) => ({
+          role_id: roleId,
+          module: m.module,
+          maske: m.maske,
+          access_level: m.accessLevel,
+        }))
+      )
       .select("id")
     // Masken noch unverändert → kein Rückbau nötig (eine evtl. Umbenennung bleibt bestehen,
     // wie bisher).
     if (insertError) return jsonError(500, SERVER_ERROR_MESSAGE)
     addedIds = ((added ?? []) as { id: string }[]).map((row) => row.id)
+  }
+
+  const updatedIds: { id: string; previousLevel: string }[] = []
+  for (const change of toUpdate) {
+    const { error: levelError } = await supabase
+      .from("role_permissions")
+      .update({ access_level: change.accessLevel })
+      .eq("id", change.id)
+      .eq("role_id", roleId)
+    if (levelError) {
+      // Bereits geänderte Stufen und neu hinzugefügte Masken zurücknehmen (best effort).
+      for (const done of updatedIds) {
+        await supabase
+          .from("role_permissions")
+          .update({ access_level: done.previousLevel })
+          .eq("id", done.id)
+          .eq("role_id", roleId)
+      }
+      if (addedIds.length > 0) {
+        await supabase.from("role_permissions").delete().eq("role_id", roleId).in("id", addedIds)
+      }
+      return jsonError(500, SERVER_ERROR_MESSAGE)
+    }
+    updatedIds.push({ id: change.id, previousLevel: change.previousLevel })
   }
 
   if (toRemove.length > 0) {

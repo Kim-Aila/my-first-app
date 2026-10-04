@@ -7,7 +7,7 @@ import { NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { z } from "zod"
 
-import { MASK_BENUTZERVERWALTUNG } from "@/lib/masks"
+import { MASK_BENUTZERVERWALTUNG, type AccessLevel, type MaskDefinition } from "@/lib/masks"
 
 export interface Caller {
   userId: string
@@ -109,6 +109,33 @@ export async function requireTenantAdmin(
     auth.caller.isSuperAdmin
   )
   if (!allowed) return { ok: false, response: jsonError(403, FORBIDDEN_MESSAGE) }
+  return auth
+}
+
+/**
+ * `requireCaller` + 403, falls der Caller die Maske im Mandanten nicht in der verlangten Stufe hat
+ * (PROJ-3). Spiegelt die SQL-Funktion `public.mask_access_level()`; RLS bleibt die zweite Ebene.
+ * Super-Admins haben überall "write".
+ */
+export async function requireMaskAccess(
+  supabase: SupabaseClient,
+  tenantId: string,
+  mask: Pick<MaskDefinition, "module" | "maske">,
+  level: AccessLevel
+): Promise<CallerResult> {
+  const auth = await requireCaller(supabase)
+  if (!auth.ok) return auth
+  if (auth.caller.isSuperAdmin) return auth
+
+  const { data, error } = await supabase.rpc("mask_access_level", {
+    p_tenant_id: tenantId,
+    p_module: mask.module,
+    p_maske: mask.maske,
+  })
+  if (error) return { ok: false, response: jsonError(500, SERVER_ERROR_MESSAGE) }
+
+  const granted = data === "write" || (level === "read" && data === "read")
+  if (!granted) return { ok: false, response: jsonError(403, FORBIDDEN_MESSAGE) }
   return auth
 }
 

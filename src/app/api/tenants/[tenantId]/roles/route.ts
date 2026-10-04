@@ -45,7 +45,14 @@ export async function POST(
   if (masks.length > 0) {
     const { error: permError } = await supabase
       .from("role_permissions")
-      .insert(masks.map((m) => ({ role_id: role.id, module: m.module, maske: m.maske })))
+      .insert(
+        masks.map((m) => ({
+          role_id: role.id,
+          module: m.module,
+          maske: m.maske,
+          access_level: m.accessLevel,
+        }))
+      )
 
     if (permError) {
       // Rolle wieder entfernen, damit nichts teilweise gespeichert bleibt.

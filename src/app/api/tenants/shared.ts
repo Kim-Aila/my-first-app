@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { MASKS, maskKey } from "@/lib/masks"
+import { MASKS, maskKey, type AccessLevel } from "@/lib/masks"
 
 export const FOREIGN_ROLE_MESSAGE = "Mindestens eine Rolle gehört nicht zu diesem Mandanten."
 
@@ -29,16 +29,31 @@ export const roleSchema = z.object({
     .min(1, "Bitte gib einen Rollennamen ein")
     .max(100, "Der Rollenname darf höchstens 100 Zeichen lang sein"),
   masks: z
-    .array(z.object({ module: z.string(), maske: z.string() }), {
-      error: UNKNOWN_MASK_MESSAGE,
-    })
+    .array(
+      z.object({
+        module: z.string(),
+        maske: z.string(),
+        // PROJ-3: Zugriffsstufe; fehlt sie, gilt "write" (Verhalten wie in PROJ-2).
+        accessLevel: z
+          .enum(["read", "write"], { error: "Ungültige Zugriffsstufe." })
+          .optional(),
+      }),
+      { error: UNKNOWN_MASK_MESSAGE }
+    )
     .max(100)
     .refine(
       (masks) => masks.every((m) => MASKS.some((known) => maskKey(known) === maskKey(m))),
       UNKNOWN_MASK_MESSAGE
     )
     .transform((masks) => {
-      const unique = new Map(masks.map((m) => [maskKey(m), { module: m.module, maske: m.maske }]))
+      // Masken ohne Lese-Stufe (Benutzerverwaltung) kennen nur "Zugriff" = "write".
+      const unique = new Map(
+        masks.map((m) => {
+          const supportsReadOnly = MASKS.find((k) => maskKey(k) === maskKey(m))?.supportsReadOnly
+          const accessLevel: AccessLevel = supportsReadOnly ? (m.accessLevel ?? "write") : "write"
+          return [maskKey(m), { module: m.module, maske: m.maske, accessLevel }]
+        })
+      )
       return [...unique.values()]
     }),
 })
