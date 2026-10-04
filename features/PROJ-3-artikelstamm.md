@@ -1,6 +1,6 @@
 # PROJ-3: Warenwirtschaft – Artikelstamm
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-27
 **Last Updated:** 2026-10-04
 
@@ -451,4 +451,29 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 - **Recommendation:** Deployen. BUG-2 bis BUG-5 (alle Low) im nächsten Sprint. AC-9 bei PROJ-5/6/7 erneut prüfen.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-10-04
+**Ziel:** derselbe selbst gehostete Docker-Container wie bei PROJ-1/2 (`my-first-app-app-1`, nicht Vercel — das Projekt deployt laut PRD lokal), neu gebaut mit dem PROJ-3-Code und neu gestartet. Dahinter die lokale, selbst gehostete Supabase-Instanz; die beiden PROJ-3-Migrationen (`20261004100000`, `20261004100100`) waren schon während `/backend` angewendet, ein separater „Produktions"-Migrationsschritt war nicht nötig.
+**Zugriff:** `http://localhost:3001` (nur an `127.0.0.1` gebunden), wie bei PROJ-1/2.
+
+**Pre-Deployment-Checks (alle bestanden):**
+- `npm run build` erfolgreich, alle neuen Routen vorhanden (`/artikelstamm`, `/artikelstamm/neu`, `/artikelstamm/[articleId]`, `/merkmale/[slug]`, `/api/tenants/[tenantId]/articles|merkmale|locks`)
+- `npm run lint` sauber; `npm test` 225/225
+- QA: Approved (11/12 Acceptance Criteria, AC-9 erst mit PROJ-5/6/7 prüfbar), keine Critical/High-Bugs, BUG-1 (Medium) behoben, 4 Low offen und akzeptiert
+- Keine Secrets committet (Diff der PROJ-3-Commits geprüft, keine `.env*`-Dateien); keine neuen Umgebungsvariablen
+- Migrationen: `supabase migration list --local` zeigt beide PROJ-3-Migrationen als angewendet
+
+**Deploy-Schritte:**
+1. Drei Commits (`feat(PROJ-3)` Frontend, `feat(PROJ-3)` Backend, `test(PROJ-3)` QA)
+2. `docker compose --env-file .env.local build`
+3. `docker compose --env-file .env.local up -d` (Container neu erstellt und gestartet)
+4. Verifikation gegen `http://localhost:3001`:
+   - ohne Anmeldung: `/login` → 200, `/` und `/artikelstamm` → 307 auf `/login`, `POST …/articles` und `POST …/locks` → 401
+   - 47 Live-Checks mit Wegwerf-Mandant/-Nutzern im Container (Rechte, Mandantentrennung, Sperre inkl. parallelem Zugriff, Seiten): alle bestanden, danach 0 Reste in der Datenbank
+   - `tests/PROJ-3-artikelstamm.spec.ts` (Chromium) gegen den Container: 38/38 bestanden, 0 Reste
+   - keine Fehler in den Container-Logs
+
+**Nicht Teil dieses Deployments / weiterhin offen:**
+- Fehler-Tracking (`docs/production/error-tracking.md`) und Security-Header (`docs/production/security-headers.md`) sind weiterhin nicht eingerichtet (bestehende Schuld seit PROJ-1, nicht durch PROJ-3 entstanden)
+- Offene Low-Bugs aus der QA: BUG-2 (Sperrfehler unter dem Kennziffer-Feld), BUG-3 (Freigabe/Verlängerung-Rennen), BUG-4 (Sperre für nicht existierende Datensätze, kein Rate-Limit), BUG-5 (768-px-Überlauf)
+- Nicht auf das GitHub-Remote gepusht (siehe unten)
