@@ -8,6 +8,7 @@ import { UsersTab } from "@/components/benutzerverwaltung/users-tab"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState, LoadErrorAlert, NoAccessCard } from "@/components/state-messages"
 import { isCurrentlyLocked } from "@/lib/format"
+import { normalizeAccessLevel } from "@/lib/masks"
 import { getSessionContext } from "@/lib/session-context"
 import { createClient as createServerClient } from "@/lib/supabase-server"
 
@@ -32,7 +33,7 @@ interface UserRoleRow {
 interface RoleRow {
   id: string
   name: string
-  role_permissions: { module: string; maske: string }[] | null
+  role_permissions: { module: string; maske: string; access_level?: string | null }[] | null
 }
 
 export default async function BenutzerverwaltungPage({
@@ -67,17 +68,29 @@ export default async function BenutzerverwaltungPage({
   const supabase = await createServerClient()
   // `user_roles`, `roles`, `role_permissions` und `user_profiles.is_active` werden von /backend
   // angelegt. Bis dahin schlagen diese Abfragen fehl → Fehlerzustand statt Absturz.
+  // `role_permissions.access_level` (PROJ-3) fehlt bis zur Migration → dann ohne Stufe lesen
+  // (alle Rechte gelten als "Lesen + Bearbeiten", wie bisher).
+  async function loadRoles() {
+    const withLevel = await supabase
+      .from("roles")
+      .select("id, name, role_permissions(module, maske, access_level)")
+      .eq("tenant_id", tenant.id)
+      .order("name", { ascending: true })
+    if (!withLevel.error) return withLevel
+    return supabase
+      .from("roles")
+      .select("id, name, role_permissions(module, maske)")
+      .eq("tenant_id", tenant.id)
+      .order("name", { ascending: true })
+  }
+
   const [accessResult, userRolesResult, rolesResult] = await Promise.all([
     supabase
       .from("user_tenant_access")
       .select("user_id, user_profiles(id, username, email, is_active, locked_until)")
       .eq("tenant_id", tenant.id),
     supabase.from("user_roles").select("user_id, role_id").eq("tenant_id", tenant.id),
-    supabase
-      .from("roles")
-      .select("id, name, role_permissions(module, maske)")
-      .eq("tenant_id", tenant.id)
-      .order("name", { ascending: true }),
+    loadRoles(),
   ])
 
   const loadError = accessResult.error || userRolesResult.error || rolesResult.error
@@ -108,7 +121,11 @@ export default async function BenutzerverwaltungPage({
   const roles: TenantRole[] = ((rolesResult.data ?? []) as unknown as RoleRow[]).map((row) => ({
     id: row.id,
     name: row.name,
-    masks: row.role_permissions ?? [],
+    masks: (row.role_permissions ?? []).map((p) => ({
+      module: p.module,
+      maske: p.maske,
+      accessLevel: normalizeAccessLevel(p.access_level),
+    })),
     userCount: userCountByRole.get(row.id) ?? 0,
   }))
 

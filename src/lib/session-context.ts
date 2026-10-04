@@ -10,7 +10,12 @@ import { cache } from "react"
 import { redirect } from "next/navigation"
 
 import { createClient as createServerClient } from "@/lib/supabase-server"
-import { MASK_BENUTZERVERWALTUNG } from "@/lib/masks"
+import {
+  MASK_BENUTZERVERWALTUNG,
+  maskKey,
+  normalizeAccessLevel,
+  type AccessLevel,
+} from "@/lib/masks"
 
 export interface TenantSummary {
   id: string
@@ -26,6 +31,12 @@ export interface SessionContext {
   tenants: TenantSummary[]
   /** Mandanten, in denen der User die Maske "Benutzerverwaltung" hat (Super-Admin: alle). */
   userAdminTenants: TenantSummary[]
+  /**
+   * Maskenrechte je Mandant: Mandanten-ID → Maskenschlüssel ("modul:maske") → Zugriffsstufe.
+   * Höchste Stufe über alle Rollen des Users im Mandanten (Rollen wirken additiv).
+   * Super-Admins stehen hier nicht drin; sie haben überall "write" (siehe `getAccessLevel`).
+   */
+  maskAccess: Record<string, Record<string, AccessLevel>>
 }
 
 interface UserRoleRow {
@@ -93,6 +104,8 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
     }
   }
 
+  const maskAccess = isSuperAdmin ? {} : await loadMaskAccess(supabase, user.id)
+
   return {
     userId: user.id,
     username: profile?.username ?? user.email ?? "Unbekannt",
@@ -100,5 +113,48 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
     isSuperAdmin,
     tenants,
     userAdminTenants,
+    maskAccess,
   }
 })
+
+interface AccessRoleRow {
+  tenant_id: string
+  roles: {
+    role_permissions: { module: string; maske: string; access_level?: string | null }[] | null
+  } | null
+}
+
+// Best-Effort wie oben: Die Spalte `role_permissions.access_level` kommt erst mit /backend von
+// PROJ-3. Schlägt die Abfrage damit fehl, wird ohne Stufe erneut gelesen (alle Rechte = "write",
+// so verhält sich PROJ-2 bisher).
+async function loadMaskAccess(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string
+): Promise<Record<string, Record<string, AccessLevel>>> {
+  try {
+    let result = await supabase
+      .from("user_roles")
+      .select("tenant_id, roles(role_permissions(module, maske, access_level))")
+      .eq("user_id", userId)
+    if (result.error) {
+      result = await supabase
+        .from("user_roles")
+        .select("tenant_id, roles(role_permissions(module, maske))")
+        .eq("user_id", userId)
+    }
+    if (result.error || !result.data) return {}
+
+    const access: Record<string, Record<string, AccessLevel>> = {}
+    for (const row of result.data as unknown as AccessRoleRow[]) {
+      const tenantAccess = (access[row.tenant_id] ??= {})
+      for (const permission of row.roles?.role_permissions ?? []) {
+        const key = maskKey(permission)
+        const level = normalizeAccessLevel(permission.access_level)
+        if (tenantAccess[key] !== "write") tenantAccess[key] = level
+      }
+    }
+    return access
+  } catch {
+    return {}
+  }
+}

@@ -28,7 +28,7 @@ import { RoleFormDialog } from "@/components/benutzerverwaltung/role-form-dialog
 import type { TenantRole } from "@/components/benutzerverwaltung/types"
 import { EmptyState } from "@/components/state-messages"
 import { apiRequest } from "@/lib/api-client"
-import { getMaskLabel } from "@/lib/masks"
+import { ACCESS_LEVEL_LABELS, MASKS, getMaskLabel, maskKey } from "@/lib/masks"
 
 interface RolesTabProps {
   tenantId: string
@@ -111,7 +111,15 @@ export function RolesTab({ tenantId, tenantName, roles }: RolesTabProps) {
             <TableBody>
               {roles.map((role) => {
                 const busy = busyRoleId === role.id
-                const maskLabels = role.masks.map(getMaskLabel).join(", ")
+                const maskLabels = role.masks
+                  .map((m) => {
+                    // Masken ohne Lese-Stufe (Benutzerverwaltung) brauchen keinen Zusatz.
+                    const supportsReadOnly = MASKS.find((k) => maskKey(k) === maskKey(m))?.supportsReadOnly
+                    return supportsReadOnly
+                      ? `${getMaskLabel(m)} (${ACCESS_LEVEL_LABELS[m.accessLevel]})`
+                      : getMaskLabel(m)
+                  })
+                  .join(", ")
                 return (
                   <TableRow key={role.id} aria-busy={busy}>
                     <TableCell className="font-medium">

@@ -1,3 +1,5 @@
+import type { MaskPermission } from "@/lib/masks"
+
 export interface TenantUser {
   id: string
   username: string
@@ -10,6 +12,6 @@ export interface TenantUser {
 export interface TenantRole {
   id: string
   name: string
-  masks: { module: string; maske: string }[]
+  masks: MaskPermission[]
   userCount: number
 }

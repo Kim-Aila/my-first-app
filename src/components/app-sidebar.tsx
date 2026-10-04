@@ -1,12 +1,16 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Building2,
+  ChevronRight,
   ChevronsUpDown,
   House,
+  ListTree,
   LogOut,
+  Package,
   ShieldCheck,
   UserRound,
   Users,
@@ -15,6 +19,7 @@ import {
 import { toast } from "sonner"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,9 +39,13 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { useConfirmLeave } from "@/components/unsaved-changes-provider"
 
 interface NavItem {
   title: string
@@ -48,6 +57,9 @@ export interface AppSidebarProps {
   username: string
   isSuperAdmin: boolean
   canManageUsers: boolean
+  /** Warenwirtschaft: nur Einträge, für die der User in mindestens einem Mandanten ein Recht hat. */
+  canViewArticles: boolean
+  merkmalItems: { title: string; href: string }[]
 }
 
 function getInitials(name: string) {
@@ -110,10 +122,75 @@ function NavList({ items, pathname }: { items: NavItem[]; pathname: string }) {
   )
 }
 
-export function AppSidebar({ username, isSuperAdmin, canManageUsers }: AppSidebarProps) {
+function MerkmaleMenu({
+  items,
+  pathname,
+}: {
+  items: { title: string; href: string }[]
+  pathname: string
+}) {
+  const { isMobile, setOpenMobile } = useSidebar()
+  const hasActive = items.some((item) => pathname.startsWith(item.href))
+  const [open, setOpen] = React.useState(hasActive)
+
+  // Beim Navigieren zu einer Merkmal-Maske den Bereich aufklappen.
+  React.useEffect(() => {
+    if (hasActive) setOpen(true)
+  }, [hasActive])
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger asChild>
+          <SidebarMenuButton tooltip="Merkmale">
+            <ListTree aria-hidden="true" />
+            <span>Merkmale</span>
+            <ChevronRight
+              aria-hidden="true"
+              className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90"
+            />
+          </SidebarMenuButton>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {items.map((item) => {
+              const isActive = pathname.startsWith(item.href)
+              return (
+                <SidebarMenuSubItem key={item.href}>
+                  <SidebarMenuSubButton asChild isActive={isActive}>
+                    <Link
+                      href={item.href}
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => {
+                        if (isMobile) setOpenMobile(false)
+                      }}
+                    >
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  )
+}
+
+export function AppSidebar({
+  username,
+  isSuperAdmin,
+  canManageUsers,
+  canViewArticles,
+  merkmalItems,
+}: AppSidebarProps) {
   const pathname = usePathname()
+  const confirmLeave = useConfirmLeave()
 
   async function handleLogout() {
+    // Ungespeicherte Änderungen in einer Maske: erst Speichern/Verwerfen/Abbrechen abfragen.
+    if (!(await confirmLeave())) return
     try {
       // Die Route antwortet mit 307 → /login. "manual", damit fetch dem Redirect nicht
       // (per 307 weiterhin als POST) folgt; die Navigation übernimmt window.location.
@@ -127,6 +204,11 @@ export function AppSidebar({ username, isSuperAdmin, canManageUsers }: AppSideba
   }
 
   const mainItems: NavItem[] = [{ title: "Startseite", href: "/", icon: House }]
+
+  const warenItems: NavItem[] = []
+  if (canViewArticles) {
+    warenItems.push({ title: "Artikelstamm", href: "/artikelstamm", icon: Package })
+  }
 
   const adminItems: NavItem[] = []
   if (canManageUsers || isSuperAdmin) {
@@ -170,6 +252,37 @@ export function AppSidebar({ username, isSuperAdmin, canManageUsers }: AppSideba
               <NavList items={mainItems} pathname={pathname} />
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {(warenItems.length > 0 || merkmalItems.length > 0) && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Warenwirtschaft</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {warenItems.map((item) => {
+                    const isActive = pathname.startsWith(item.href)
+                    return (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={isActive}
+                          tooltip={item.title}
+                          className="data-[active=true]:border data-[active=true]:border-sidebar-border data-[active=true]:bg-card data-[active=true]:font-medium data-[active=true]:shadow-sm"
+                        >
+                          <Link href={item.href} aria-current={isActive ? "page" : undefined}>
+                            <item.icon aria-hidden="true" />
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )
+                  })}
+                  {merkmalItems.length > 0 && (
+                    <MerkmaleMenu items={merkmalItems} pathname={pathname} />
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
 
           {adminItems.length > 0 && (
             <SidebarGroup>
