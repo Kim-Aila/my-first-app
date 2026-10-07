@@ -70,6 +70,49 @@ describe("POST /api/tenants/:tenantId/merkmale/:slug", () => {
     })
   })
 
+  it("creates a Palettenklasse in its own table with only the class (201)", async () => {
+    asWriter()
+    server.respond("pallet_classes:insert", { data: { id: ITEM } })
+    const res = await post("palettenklassen", { code: " A " })
+    expect(res.status).toBe(201)
+    expect(server.rpc).toHaveBeenCalledWith("mask_access_level", {
+      p_tenant_id: IDS.tenant,
+      p_module: "warenwirtschaft",
+      p_maske: "merkmal_palettenklasse",
+    })
+    expect(server.callsTo("pallet_classes", "insert")[0].payload).toEqual({
+      tenant_id: IDS.tenant,
+      code: "A",
+    })
+  })
+
+  it("returns 409 on the field 'code' for a duplicate Palettenklasse", async () => {
+    asWriter()
+    server.respond("pallet_classes:insert", { error: { message: "dup", code: "23505" } })
+    const res = await post("palettenklassen", { code: "A" })
+    expect(res.status).toBe(409)
+    expect((await res.json()).field).toBe("code")
+  })
+
+  it("maps the 4 weight fields of a Verpackungsgruppe to snake_case columns", async () => {
+    asWriter()
+    server.respond("packaging_groups:insert", { data: { id: ITEM } })
+    await post("verpackungsgruppen", {
+      name: "Karton",
+      foilSystemWeight: 1.5,
+      cardboardSystemWeight: 2,
+      foilTransportWeight: 3,
+    })
+    expect(server.callsTo("packaging_groups", "insert")[0].payload).toEqual({
+      tenant_id: IDS.tenant,
+      name: "Karton",
+      foil_system_weight: 1.5,
+      cardboard_system_weight: 2,
+      foil_transport_weight: 3,
+      cardboard_transport_weight: null,
+    })
+  })
+
   it("returns 404 for an unknown Merkmal table", async () => {
     asWriter()
     expect((await post("unbekannt", { code: "x", name: "y" })).status).toBe(404)
@@ -91,7 +134,10 @@ describe("POST /api/tenants/:tenantId/merkmale/:slug", () => {
     ["saisons", { code: "SOM", name: "Sommer" }, "commodityDigit"],
     ["artikeltypen", { code: "FW", name: "Fertig", commodityDigit: "4" }, "commodityDigit"],
     ["mehrwertsteuersaetze", { ratePercent: 150, name: "x" }, "ratePercent"],
-    ["verpackungsgruppen", { name: "Karton", foilWeight: -1 }, "foilWeight"],
+    ["verpackungsgruppen", { name: "Karton", foilTransportWeight: -1 }, "foilTransportWeight"],
+    ["verpackungsgruppen", { name: "Karton", cardboardSystemWeight: "x" }, "cardboardSystemWeight"],
+    ["palettenklassen", { code: "" }, "code"],
+    ["palettenklassen", { code: "x".repeat(21) }, "code"],
     ["markeninhaber", { code: "x".repeat(21), name: "y" }, "code"],
   ])("returns 400 with the field for invalid %s input", async (slug, body, field) => {
     asWriter()

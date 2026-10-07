@@ -6,13 +6,16 @@ import {
   computeArticleNumber,
   computeCommodityGroup,
   computeGrossWeight,
+  computeMatchCode,
   rowToArticle,
   toArticlePayload,
 } from "./articles"
 
 describe("computeArticleNumber", () => {
-  it("joins base article number and 4-digit kennziffer", () => {
-    expect(computeArticleNumber("1200", "0042")).toBe("12000042")
+  it("joins base article number, a dot and the 4-digit kennziffer", () => {
+    expect(computeArticleNumber("12345", "0001")).toBe("12345.0001")
+    expect(computeArticleNumber("1", "0042")).toBe("1.0042")
+    expect(computeArticleNumber("1234567890", "0042")).toBe("1234567890.0042")
   })
 
   it("is null while a part is missing or the kennziffer is not 4 digits", () => {
@@ -20,6 +23,24 @@ describe("computeArticleNumber", () => {
     expect(computeArticleNumber(null, "0042")).toBeNull()
     expect(computeArticleNumber("1200", "42")).toBeNull()
     expect(computeArticleNumber("1200", "00a2")).toBeNull()
+  })
+
+  it("is null for a base article number that is not 1 to 10 digits", () => {
+    expect(computeArticleNumber("12a", "0042")).toBeNull()
+    expect(computeArticleNumber("12345678901", "0042")).toBeNull()
+  })
+})
+
+describe("computeMatchCode", () => {
+  it("joins the Kürzel with a hyphen in the given order", () => {
+    expect(computeMatchCode(["FW", "BO", "SOM", "1200", "HAS", "100", "VM"])).toBe(
+      "FW-BO-SOM-1200-HAS-100-VM"
+    )
+  })
+
+  it("skips missing Merkmale", () => {
+    expect(computeMatchCode(["FW", null, "SOM", undefined, "", "  ", "VM"])).toBe("FW-SOM-VM")
+    expect(computeMatchCode([])).toBe("")
   })
 })
 
@@ -52,9 +73,9 @@ describe("computeGrossWeight", () => {
 })
 
 describe("articleFormSchema", () => {
-  const valid = { ...EMPTY_ARTICLE_VALUES, baseArticleId: "b1", kennziffer: "0001" }
+  const valid = { ...EMPTY_ARTICLE_VALUES, baseArticleNumber: "12345", kennziffer: "0001" }
 
-  it("accepts only base article and kennziffer as required fields", () => {
+  it("accepts only base article number and kennziffer as required fields", () => {
     expect(articleFormSchema.safeParse(valid).success).toBe(true)
   })
 
@@ -65,8 +86,15 @@ describe("articleFormSchema", () => {
     }
   })
 
-  it("requires a base article", () => {
-    expect(articleFormSchema.safeParse({ ...valid, baseArticleId: "" }).success).toBe(false)
+  it("requires a base article number of 1 to 10 digits", () => {
+    for (const baseArticleNumber of ["", "12a", "12.3", "12345678901"]) {
+      expect(articleFormSchema.safeParse({ ...valid, baseArticleNumber }).success).toBe(false)
+    }
+    expect(articleFormSchema.safeParse({ ...valid, baseArticleNumber: "1234567890" }).success).toBe(true)
+  })
+
+  it("does not require the Basisartikel or Palettenklasse reference", () => {
+    expect(articleFormSchema.safeParse({ ...valid, baseArticleId: "", palletClassId: "" }).success).toBe(true)
   })
 
   it("validates numeric fields", () => {
@@ -81,11 +109,14 @@ describe("toArticlePayload", () => {
   it("converts empty strings to null and decimals to numbers", () => {
     const payload = toArticlePayload({
       ...EMPTY_ARTICLE_VALUES,
-      baseArticleId: "b1",
+      baseArticleNumber: "12345",
       kennziffer: "0001",
       weight: "12,5",
       cartonContent: "24",
     })
+    expect(payload.baseArticleNumber).toBe("12345")
+    expect(payload.baseArticleId).toBeNull()
+    expect(payload.palletClassId).toBeNull()
     expect(payload.name).toBeNull()
     expect(payload.articleTypeId).toBeNull()
     expect(payload.weight).toBe(12.5)
@@ -94,7 +125,7 @@ describe("toArticlePayload", () => {
   })
 
   it("drops the mixed count when the article is not a Mischartikel", () => {
-    const base = { ...EMPTY_ARTICLE_VALUES, baseArticleId: "b1", kennziffer: "0001", mixedCount: "3" }
+    const base = { ...EMPTY_ARTICLE_VALUES, baseArticleNumber: "12345", kennziffer: "0001", mixedCount: "3" }
     expect(toArticlePayload({ ...base, isMixed: false }).mixedCount).toBeNull()
     expect(toArticlePayload({ ...base, isMixed: true }).mixedCount).toBe(3)
   })
@@ -104,15 +135,21 @@ describe("rowToArticle", () => {
   it("maps database columns and formats numbers for the form", () => {
     const article = rowToArticle({
       id: "a1",
-      article_number: "12000042",
+      article_number: "12345.0042",
+      match_code: "FW-SOM-1200",
       commodity_group: "340",
       kennziffer: "0042",
+      base_article_number: "12345",
       base_article_id: "b1",
+      pallet_class_id: "p1",
       weight: 12.5,
       is_active: false,
       fairtrade: true,
     })
-    expect(article.articleNumber).toBe("12000042")
+    expect(article.articleNumber).toBe("12345.0042")
+    expect(article.matchCode).toBe("FW-SOM-1200")
+    expect(article.values.baseArticleNumber).toBe("12345")
+    expect(article.values.palletClassId).toBe("p1")
     expect(article.isActive).toBe(false)
     expect(article.values.weight).toBe("12,5")
     expect(article.values.fairtrade).toBe(true)

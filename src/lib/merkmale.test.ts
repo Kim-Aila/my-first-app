@@ -11,10 +11,10 @@ import {
 } from "./merkmale"
 
 describe("MERKMALE registry", () => {
-  it("has the 9 Merkmal tables with unique slugs, tables and article keys", () => {
-    expect(MERKMALE).toHaveLength(9)
+  it("has the 10 Merkmal tables with unique slugs, tables and article keys", () => {
+    expect(MERKMALE).toHaveLength(10)
     for (const key of ["slug", "table", "articleKey"] as const) {
-      expect(new Set(MERKMALE.map((m) => m[key])).size).toBe(9)
+      expect(new Set(MERKMALE.map((m) => m[key])).size).toBe(10)
     }
   })
 
@@ -34,10 +34,37 @@ describe("buildMerkmalSchema", () => {
     expect(schema.safeParse({ code: "RO", name: "Rohstoff", commodityDigit: "" }).success).toBe(false)
   })
 
-  it("accepts a missing optional weight for Verpackungsgruppen", () => {
+  it("accepts missing optional weights for Verpackungsgruppen and validates the 4 weight fields", () => {
     const schema = buildMerkmalSchema(getMerkmalConfig("verpackungsgruppen")!)
-    expect(schema.safeParse({ name: "Karton", foilWeight: "" }).success).toBe(true)
-    expect(schema.safeParse({ name: "Karton", foilWeight: "x" }).success).toBe(false)
+    const empty = {
+      name: "Karton",
+      foilSystemWeight: "",
+      cardboardSystemWeight: "",
+      foilTransportWeight: "",
+      cardboardTransportWeight: "",
+    }
+    expect(schema.safeParse(empty).success).toBe(true)
+    expect(
+      schema.safeParse({ ...empty, foilSystemWeight: "1,5", cardboardTransportWeight: "20" }).success
+    ).toBe(true)
+    for (const key of Object.keys(empty).filter((k) => k !== "name")) {
+      expect(schema.safeParse({ ...empty, [key]: "x" }).success).toBe(false)
+    }
+  })
+
+  it("has only the field 'Klasse' for Palettenklassen", () => {
+    const config = getMerkmalConfig("palettenklassen")!
+    expect(config.fields.map((f) => f.key)).toEqual(["code"])
+    expect(config.fields[0].label).toBe("Klasse")
+    const schema = buildMerkmalSchema(config)
+    expect(schema.safeParse({ code: "A" }).success).toBe(true)
+    expect(schema.safeParse({ code: "" }).success).toBe(false)
+    expect(merkmalLabel(config, rowToMerkmalItem(config, { id: "p1", code: "A" }))).toBe("A")
+  })
+
+  it("labels the Basisartikel code as Kürzel", () => {
+    const config = getMerkmalConfig("basisartikel")!
+    expect(config.fields.find((f) => f.key === "code")?.label).toBe("Kürzel")
   })
 })
 

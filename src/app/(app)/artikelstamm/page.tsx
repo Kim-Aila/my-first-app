@@ -80,7 +80,7 @@ export default async function ArtikelstammPage({ searchParams }: { searchParams:
     .eq("tenant_id", tenant.id)
     .order("article_number", { ascending: true })
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
-  if (q) query = query.or(`article_number.ilike.%${q}%,name.ilike.%${q}%`)
+  if (q) query = query.or(`article_number.ilike.%${q}%,name.ilike.%${q}%,match_code.ilike.%${q}%`)
   if (typ) query = query.eq("article_type_id", typ)
   if (status === "aktiv") query = query.eq("is_active", true)
   if (status === "inaktiv") query = query.eq("is_active", false)

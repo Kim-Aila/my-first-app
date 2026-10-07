@@ -1,8 +1,8 @@
 // Artikelstamm (PROJ-3): Formularmodell, Validierung, Anzeige-Berechnungen und Mapping der
 // Datenbankzeilen (von /backend angelegte Tabelle `articles`).
 //
-// Artikelnummer, Warengruppe und Bruttogewicht berechnet verbindlich der Server; die Funktionen
-// hier erzeugen nur die Live-Vorschau im Formular und müssen dieselbe Regel abbilden.
+// Artikelnummer, Matchcode, Warengruppe und Bruttogewicht berechnet verbindlich der Server; die
+// Funktionen hier erzeugen nur die Live-Vorschau im Formular und müssen dieselbe Regel abbilden.
 import { z } from "zod"
 
 import { isDecimalInput, parseDecimalInput, toDecimalInput } from "@/lib/decimal"
@@ -13,12 +13,23 @@ export const ARTICLE_LOCK_RESOURCE = "article"
 
 // ---- Berechnungen (Vorschau) ----------------------------------------------------------------
 
-/** Basisartikel-Nummer + 4-stellige Kennziffer; solange eines fehlt → null. */
+/** Basisartikelnummer (1–10 Ziffern) + "." + 4-stellige Kennziffer; solange eines fehlt → null. */
 export function computeArticleNumber(baseNumber: string | null | undefined, kennziffer: string) {
   const base = (baseNumber ?? "").trim()
   const code = kennziffer.trim()
-  if (!base || !/^\d{4}$/.test(code)) return null
-  return `${base}${code}`
+  if (!/^\d{1,10}$/.test(base) || !/^\d{4}$/.test(code)) return null
+  return `${base}.${code}`
+}
+
+/**
+ * Matchcode: Kürzel von Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design,
+ * Packungsgröße, Geschmackssorte (in dieser Reihenfolge) mit "-"; nicht gewählte werden übersprungen.
+ */
+export function computeMatchCode(codes: (string | null | undefined)[]) {
+  return codes
+    .map((code) => (code ?? "").trim())
+    .filter((code) => code !== "")
+    .join("-")
 }
 
 /** Saison-Ziffer + Artikeltyp-Ziffer + Platzhalter "0"; fehlende Ziffern zählen als 0. */
@@ -43,6 +54,7 @@ export function computeGrossWeight(weight: string, tara: string): number | null 
 
 export interface ArticleFormValues {
   articleTypeId: string
+  baseArticleNumber: string
   baseArticleId: string
   kennziffer: string
   name: string
@@ -55,7 +67,7 @@ export interface ArticleFormValues {
   fairtrade: boolean
   rainforest: boolean
   fsc: boolean
-  palletClass: string
+  palletClassId: string
   isMixed: boolean
   mixedCount: string
   gtinMain: string
@@ -76,6 +88,7 @@ export interface ArticleFormValues {
 
 export const EMPTY_ARTICLE_VALUES: ArticleFormValues = {
   articleTypeId: "",
+  baseArticleNumber: "",
   baseArticleId: "",
   kennziffer: "",
   name: "",
@@ -88,7 +101,7 @@ export const EMPTY_ARTICLE_VALUES: ArticleFormValues = {
   fairtrade: false,
   rainforest: false,
   fsc: false,
-  palletClass: "",
+  palletClassId: "",
   isMixed: false,
   mixedCount: "",
   gtinMain: "",
@@ -128,7 +141,11 @@ const optionalDigits = (label: string) =>
 
 export const articleFormSchema = z.object({
   articleTypeId: z.string(),
-  baseArticleId: z.string().min(1, "Bitte einen Basisartikel wählen"),
+  baseArticleNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{1,10}$/, "Die Basisartikelnummer muss aus 1 bis 10 Ziffern bestehen"),
+  baseArticleId: z.string(),
   kennziffer: z
     .string()
     .trim()
@@ -143,7 +160,7 @@ export const articleFormSchema = z.object({
   fairtrade: z.boolean(),
   rainforest: z.boolean(),
   fsc: z.boolean(),
-  palletClass: optionalText("Die Palettenklasse", 50),
+  palletClassId: z.string(),
   isMixed: z.boolean(),
   mixedCount: optionalInteger,
   gtinMain: optionalDigits("GTIN Hauptartikel"),
@@ -176,7 +193,8 @@ function intOrNull(value: string) {
 export function toArticlePayload(values: ArticleFormValues) {
   return {
     articleTypeId: nullIfEmpty(values.articleTypeId),
-    baseArticleId: values.baseArticleId,
+    baseArticleNumber: values.baseArticleNumber.trim(),
+    baseArticleId: nullIfEmpty(values.baseArticleId),
     kennziffer: values.kennziffer.trim(),
     name: nullIfEmpty(values.name),
     description: nullIfEmpty(values.description),
@@ -188,7 +206,7 @@ export function toArticlePayload(values: ArticleFormValues) {
     fairtrade: values.fairtrade,
     rainforest: values.rainforest,
     fsc: values.fsc,
-    palletClass: nullIfEmpty(values.palletClass),
+    palletClassId: nullIfEmpty(values.palletClassId),
     isMixed: values.isMixed,
     mixedCount: values.isMixed ? intOrNull(values.mixedCount) : null,
     gtinMain: nullIfEmpty(values.gtinMain),
@@ -214,8 +232,10 @@ export function toArticlePayload(values: ArticleFormValues) {
 export const ARTICLE_COLUMNS = [
   "id",
   "article_number",
+  "match_code",
   "commodity_group",
   "article_type_id",
+  "base_article_number",
   "base_article_id",
   "kennziffer",
   "name",
@@ -228,7 +248,7 @@ export const ARTICLE_COLUMNS = [
   "fairtrade",
   "rainforest",
   "fsc",
-  "pallet_class",
+  "pallet_class_id",
   "is_mixed",
   "mixed_count",
   "gtin_main",
@@ -252,6 +272,7 @@ export const ARTICLE_COLUMNS = [
 export interface Article {
   id: string
   articleNumber: string
+  matchCode: string
   commodityGroup: string
   isActive: boolean
   updatedAt: string | null
@@ -268,11 +289,13 @@ export function rowToArticle(row: Row): Article {
   return {
     id: String(row.id),
     articleNumber: str(row.article_number),
+    matchCode: str(row.match_code),
     commodityGroup: str(row.commodity_group),
     isActive: row.is_active !== false,
     updatedAt: row.updated_at ? String(row.updated_at) : null,
     values: {
       articleTypeId: str(row.article_type_id),
+      baseArticleNumber: str(row.base_article_number),
       baseArticleId: str(row.base_article_id),
       kennziffer: str(row.kennziffer),
       name: str(row.name),
@@ -285,7 +308,7 @@ export function rowToArticle(row: Row): Article {
       fairtrade: row.fairtrade === true,
       rainforest: row.rainforest === true,
       fsc: row.fsc === true,
-      palletClass: str(row.pallet_class),
+      palletClassId: str(row.pallet_class_id),
       isMixed: row.is_mixed === true,
       mixedCount: int(row.mixed_count),
       gtinMain: str(row.gtin_main),

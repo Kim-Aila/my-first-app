@@ -95,7 +95,12 @@ export const MASK_MERKMAL_MWST = merkmalMask(
 export const MASK_MERKMAL_VERPACKUNGSGRUPPE = merkmalMask(
   "merkmal_verpackungsgruppe",
   "Verpackungsgruppen",
-  "Verpackungsgruppen inkl. Folien-/Pappengewicht pflegen"
+  "Verpackungsgruppen inkl. Folien-/Pappengewichte pflegen"
+)
+export const MASK_MERKMAL_PALETTENKLASSE = merkmalMask(
+  "merkmal_palettenklasse",
+  "Palettenklassen",
+  "Palettenklassen pflegen"
 )
 
 export const MASKS: MaskDefinition[] = [
@@ -110,6 +115,7 @@ export const MASKS: MaskDefinition[] = [
   MASK_MERKMAL_GESCHMACKSSORTE,
   MASK_MERKMAL_MWST,
   MASK_MERKMAL_VERPACKUNGSGRUPPE,
+  MASK_MERKMAL_PALETTENKLASSE,
 ]
 
 export function maskKey(mask: { module: string; maske: string }) {

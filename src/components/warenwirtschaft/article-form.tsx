@@ -48,6 +48,7 @@ import {
   articleFormSchema,
   computeArticleNumber,
   computeCommodityGroup,
+  computeMatchCode,
   computeGrossWeight,
   toArticlePayload,
   type Article,
@@ -78,6 +79,7 @@ type ReferenceFieldName =
   | "formDesignId"
   | "packSizeId"
   | "flavorId"
+  | "palletClassId"
   | "packagingGroupId"
   | "vatRateId"
 
@@ -120,11 +122,24 @@ export function ArticleForm({
   const baseItem = references.baseArticleId?.find((i) => i.id === watched.baseArticleId)
   const seasonItem = references.seasonId?.find((i) => i.id === watched.seasonId)
   const typeItem = references.articleTypeId?.find((i) => i.id === watched.articleTypeId)
-  const previewNumber = computeArticleNumber(
-    typeof baseItem?.values.code === "string" ? baseItem.values.code : null,
-    watched.kennziffer
-  )
+  const previewNumber = computeArticleNumber(watched.baseArticleNumber, watched.kennziffer)
   const articleNumber = isEditing ? previewNumber : (article?.articleNumber ?? previewNumber)
+  const codeOf = (key: "brandOwnerId" | "formDesignId" | "packSizeId" | "flavorId") => {
+    const code = references[key]?.find((i) => i.id === watched[key])?.values.code
+    return typeof code === "string" ? code : null
+  }
+  const codeOfItem = (item: typeof baseItem) =>
+    typeof item?.values.code === "string" ? item.values.code : null
+  const previewMatchCode = computeMatchCode([
+    codeOfItem(typeItem),
+    codeOf("brandOwnerId"),
+    codeOfItem(seasonItem),
+    codeOfItem(baseItem),
+    codeOf("formDesignId"),
+    codeOf("packSizeId"),
+    codeOf("flavorId"),
+  ])
+  const matchCode = isEditing ? previewMatchCode : (article?.matchCode ?? previewMatchCode)
   const commodityGroup = computeCommodityGroup(
     typeof seasonItem?.values.commodityDigit === "number" ? seasonItem.values.commodityDigit : null,
     typeof typeItem?.values.commodityDigit === "number" ? typeItem.values.commodityDigit : null
@@ -333,7 +348,7 @@ export function ArticleForm({
         title={title}
         description={
           isNew
-            ? "Pflichtfelder sind Basisartikel und Artikelkennziffer."
+            ? "Pflichtfelder sind Basisartikelnummer und Artikelkennziffer."
             : article.values.name || "Ohne Bezeichnung"
         }
         actions={
@@ -411,10 +426,18 @@ export function ArticleForm({
               <Section id="kern" title="Kern & Identifikation">
                 <div className="grid gap-4 md:grid-cols-2">
                   {renderReference("articleTypeId")}
-                  {renderReference("baseArticleId", {
-                    required: true,
-                    onPick: prefillCustomsTariff,
-                  })}
+                  {renderReference("baseArticleId", { onPick: prefillCustomsTariff })}
+                  <TextField
+                    control={c}
+                    name="baseArticleNumber"
+                    label="Basisartikelnummer"
+                    required
+                    disabled={fieldsDisabled}
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="bis zu 10 Ziffern, z. B. 12345"
+                    hint="Nur Ziffern, höchstens 10 Stellen."
+                  />
                   <TextField
                     control={c}
                     name="kennziffer"
@@ -430,7 +453,13 @@ export function ArticleForm({
                     id="article-number"
                     label="Artikelnummer"
                     value={articleNumber}
-                    hint="Basisartikel-Nummer + Kennziffer, pro Mandant eindeutig."
+                    hint="Basisartikelnummer + „.“ + Kennziffer, pro Mandant eindeutig."
+                  />
+                  <ComputedField
+                    id="article-match-code"
+                    label="Matchcode"
+                    value={matchCode}
+                    hint="Kürzel der gewählten Merkmale, mit Bindestrich verbunden."
                   />
                   <ComputedField
                     id="article-commodity-group"
@@ -479,7 +508,7 @@ export function ArticleForm({
 
               <Section id="logistik" title="Verpackung & Logistik">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  <TextField control={c} name="palletClass" label="Palettenklasse" disabled={fieldsDisabled} maxLength={50} />
+                  {renderReference("palletClassId")}
                   <TextField
                     control={c}
                     name="cartonContent"

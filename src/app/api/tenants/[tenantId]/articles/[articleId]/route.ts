@@ -42,7 +42,7 @@ export async function PATCH(
     .update(articleRow(parsed.data))
     .eq("id", articleId)
     .eq("tenant_id", tenantId)
-    .select("id, article_number")
+    .select("id, article_number, match_code")
     .maybeSingle()
 
   if (error) {
@@ -57,5 +57,9 @@ export async function PATCH(
     p_resource_id: articleId,
   })
 
-  return NextResponse.json({ id: data.id, articleNumber: data.article_number })
+  return NextResponse.json({
+    id: data.id,
+    articleNumber: data.article_number,
+    matchCode: data.match_code,
+  })
 }

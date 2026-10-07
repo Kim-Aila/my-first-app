@@ -1,10 +1,10 @@
 # PROJ-3: Warenwirtschaft – Artikelstamm
 
-## Status: Deployed
+## Status: In Progress
 **Created:** 2026-09-27
 **Last Updated:** 2026-10-07
 
-> **Refinement 2026-10-07 (offen, noch nicht umgesetzt):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
+> **Refinement 2026-10-07 (Backend umgesetzt, Frontend/QA offen):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — Multi-Tenant-Grundschema
@@ -430,6 +430,35 @@ Keine neuen Pakete. Das shadcn/ui-Bauteil „Tabs" ist bereits installiert.
 - Merkmal-Einträge werden ohne Sperre bearbeitet (last-write-wins wie Rollen in PROJ-2).
 - Policies rufen `mask_access_level()` pro Zeile auf; bei einigen tausend Artikeln pro Mandant ist das unkritisch, bei deutlich mehr sollte die Liste in `/qa` gemessen werden.
 
+## Implementation Notes (Backend) – Refinement 2026-10-07
+
+**Stand 2026-10-07:** Datenbank, Trigger, Routen und Tests für die Refinement sind fertig; Migration `20261007100000_proj3_refinement.sql` ist auf der lokalen Supabase-Instanz angewendet. Geprüft: `tsc`, `eslint`, `npm run build`, `vitest` (243 Tests), SQL-Test `supabase/tests/proj3_rls.sql` (angepasst und erweitert, „ALL OK", rollt zurück). **Nicht** erneut ausgeführt: Playwright-E2E (siehe „Offen").
+
+### Migration `20261007100000_proj3_refinement.sql`
+- **Bereinigung:** Die 2 vorhandenen Test-Artikel (und ihre Sperren) werden gelöscht (Nutzerentscheidung 2026-10-07, keine Datenmigration).
+- **`articles`:** neu `base_article_number` (Pflicht, Check `^[0-9]{1,10}$`), `match_code` (berechnet, Trigram-Index für die Suche), `pallet_class_id` (zusammengesetzter FK `(id, tenant_id)` → `pallet_classes`); `pallet_class` (Freitext) entfällt; `base_article_id` ist jetzt optional. Zusätzliche Indizes auf `article_type_id`, `brand_owner_id`, `form_design_id`, `pack_size_id`, `flavor_id`, `pallet_class_id` (die Neuberechnung bei Kürzeländerung sucht darüber).
+- **`pallet_classes` (neu):** nur `code` (je Mandant case-insensitiv eindeutig), `is_active`; RLS aktiviert + erzwungen; Policies wie alle Merkmal-Tabellen (lesen: Maske `merkmal_palettenklasse` ODER Artikelstamm; anlegen/ändern: Stufe `write` auf `merkmal_palettenklasse`; **keine DELETE-Policy**).
+- **`packaging_groups`:** `foil_weight` entfällt; neu `foil_system_weight`, `cardboard_system_weight`, `foil_transport_weight`, `cardboard_transport_weight` (g, `>= 0`, optional).
+- **Trigger `articles_before_write`:** Artikelnummer = `base_article_number || '.' || kennziffer`; Matchcode = Kürzel von Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, mit `-` verbunden, fehlende übersprungen (ohne Merkmale: leerer String); Warengruppe/Bruttogewicht unverändert; `pallet_classes` in der Prüfung „deaktivierte Merkmale nicht neu verwenden"; `match_code` zählt wie die anderen berechneten Felder nicht als Inhaltsänderung (keine Sperrprüfung beim Neuberechnen).
+- **Folge-Berechnung:** Die drei Einzel-Trigger/-Funktionen aus der ersten Migration sind durch **eine** Funktion `recompute_articles_for_ref()` (Argument = Verweisspalte am Artikel) ersetzt. Sie feuert nach Änderung des **Kürzels** in allen 7 Matchcode-Tabellen und zusätzlich bei Änderung der Warengruppen-Ziffer (Saison, Artikeltyp). Die Neuberechnung der Artikelnummern bei Änderung der Basisartikel-Merkmalnummer entfällt.
+
+### Routen / Schemas
+- `articleSchema` (`warenwirtschaft-shared.ts`): neu `baseArticleNumber` (Pflicht, 1–10 Ziffern, Meldung „Die Basisartikelnummer muss aus 1 bis 10 Ziffern bestehen"), `baseArticleId` optional (`uuid | null`), `palletClassId` (`uuid | null`) statt `palletClass`. Mitgeschickte `articleNumber`/`matchCode`/`commodityGroup`/`grossWeight` werden verworfen.
+- `POST …/articles` → `201 { id, articleNumber, matchCode }`; `PATCH …/articles/:id` → `200 { id, articleNumber, matchCode }`.
+- `…/merkmale/palettenklassen` (POST/PATCH) läuft über die bestehende konfigurierbare Route (Konfiguration in `src/lib/merkmale.ts`); Duplikat → 409 mit `field: "code"`. Verpackungsgruppe nimmt `foilSystemWeight`, `cardboardSystemWeight`, `foilTransportWeight`, `cardboardTransportWeight`.
+- Die Artikelliste (`/artikelstamm`) durchsucht zusätzlich `match_code`.
+- Neue Maske `warenwirtschaft:merkmal_palettenklasse` im Register (`src/lib/masks.ts`); damit 11 Masken (Artikelstamm + 10 Merkmale). Die Rollen-Routen validieren gegen `MASKS` und akzeptieren sie ohne Änderung.
+
+### Minimale Frontend-Anpassung (damit die App mit der neuen Datenbank funktioniert)
+- `src/lib/articles.ts`: `baseArticleNumber`, `palletClassId`, `matchCode`, `computeArticleNumber` (mit Punkt), neue Vorschau-Funktion `computeMatchCode`.
+- `article-form.tsx`: Feld „Basisartikelnummer" (Pflicht), Basisartikel nur noch optional, Palettenklasse als Auswahlfeld, Matchcode-Live-Anzeige. **Das Reiter-Layout, die Fehlermarkierung am Reiter und der Bezeichnungs-Vorschlag sind noch nicht gebaut → `/frontend`.**
+- Merkmal-Konfiguration: Basisartikel-Feld „Nummer" → „Kürzel", Palettenklassen-Konfiguration, 4 Gewichtsfelder der Verpackungsgruppe.
+
+### Offen / Hinweise
+- **Playwright-E2E (`tests/PROJ-3-artikelstamm.spec.ts`) ist noch nicht angepasst:** Seed/Fixtures für Artikel (`base_article_id`-Inserts ohne `base_article_number`), Erwartungen an die Artikelnummer ohne Punkt und die UI-Schritte „Basisartikel wählen" müssen mit `/frontend` und `/qa` nachgezogen werden. Nur `tests/global-setup.ts` kennt bereits die neue Maske.
+- **Das laufende Docker-Deployment (`localhost:3001`) nutzt dieselbe lokale Datenbank und läuft noch mit dem alten Code:** Artikel anlegen/ändern und die Artikelmasken schlagen dort jetzt fehl, bis die App mit dem neuen Code neu gebaut wird (`/deploy`). Die Datenbank ist rückwärts nicht kompatibel zum alten Stand (neue Pflichtspalte, entfernte Spalten).
+- Die Migration wurde per `psql` angewendet und in `supabase_migrations.schema_migrations` eingetragen (die Supabase-CLI ist in dieser Umgebung nicht installiert).
+
 ## QA Test Results
 
 **Getestet:** 2026-10-04
@@ -590,7 +619,7 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 
 ## Refinement 2026-10-07 (Änderungen nach Nutzertest)
 
-**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Umsetzung offen. Nächste Schritte: `/backend`, `/frontend`, `/qa`.
+**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend umgesetzt am 2026-10-07 (siehe „Implementation Notes (Backend) – Refinement 2026-10-07"). Nächste Schritte: `/frontend`, `/qa`.
 
 ### Auswirkungen auf Umsetzung (Delta zu Tech Design / Implementation)
 - **Datenmodell `articles`:** neues Feld `base_article_number` (Ziffern, max. 10, Pflicht); Verweis `base_article_id` bleibt als Klassifizierung (optional); `article_number` = `base_article_number || '.' || kennziffer`; neues berechnetes Feld `match_code` (+ Trigram-Index für Suche); `pallet_class` wird Verweis auf neue Tabelle.

@@ -14,7 +14,9 @@ const ARTICLE = "77777777-7777-4777-8777-777777777777"
 const BASE = "88888888-8888-4888-8888-888888888888"
 const SEASON = "99999999-9999-4999-8999-999999999999"
 
-const valid = { baseArticleId: BASE, kennziffer: "0042" }
+const PALLET = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+
+const valid = { baseArticleNumber: "12345", kennziffer: "0042" }
 const base = `http://localhost/api/tenants/${IDS.tenant}/articles`
 
 const post = (body: unknown) =>
@@ -42,16 +44,32 @@ beforeEach(() => {
 describe("POST /api/tenants/:tenantId/articles", () => {
   it("creates the article with only the required fields and maps snake_case columns (201)", async () => {
     asWriter()
-    server.respond("articles:insert", { data: { id: ARTICLE, article_number: "12000042" } })
+    server.respond("articles:insert", {
+      data: { id: ARTICLE, article_number: "12345.0042", match_code: "FW-1200" },
+    })
 
-    const res = await post({ ...valid, name: " Tafel ", weight: 12.5, isMixed: true, mixedCount: 3 })
+    const res = await post({
+      ...valid,
+      baseArticleId: BASE,
+      palletClassId: PALLET,
+      name: " Tafel ",
+      weight: 12.5,
+      isMixed: true,
+      mixedCount: 3,
+    })
     expect(res.status).toBe(201)
-    expect(await res.json()).toEqual({ id: ARTICLE, articleNumber: "12000042" })
+    expect(await res.json()).toEqual({
+      id: ARTICLE,
+      articleNumber: "12345.0042",
+      matchCode: "FW-1200",
+    })
 
     const payload = server.callsTo("articles", "insert")[0].payload as Record<string, unknown>
     expect(payload).toMatchObject({
       tenant_id: IDS.tenant,
+      base_article_number: "12345",
       base_article_id: BASE,
+      pallet_class_id: PALLET,
       kennziffer: "0042",
       name: "Tafel",
       weight: 12.5,
@@ -62,13 +80,20 @@ describe("POST /api/tenants/:tenantId/articles", () => {
     })
   })
 
-  it("ignores client-supplied computed fields (number, commodity group, gross weight)", async () => {
+  it("ignores client-supplied computed fields (number, match code, commodity group, gross weight)", async () => {
     asWriter()
-    server.respond("articles:insert", { data: { id: ARTICLE, article_number: "12000042" } })
+    server.respond("articles:insert", { data: { id: ARTICLE, article_number: "12345.0042" } })
 
-    await post({ ...valid, articleNumber: "FAKE", commodityGroup: "999", grossWeight: 5 })
+    await post({
+      ...valid,
+      articleNumber: "FAKE",
+      matchCode: "FAKE",
+      commodityGroup: "999",
+      grossWeight: 5,
+    })
     const payload = server.callsTo("articles", "insert")[0].payload as Record<string, unknown>
     expect(payload).not.toHaveProperty("article_number")
+    expect(payload).not.toHaveProperty("match_code")
     expect(payload).not.toHaveProperty("commodity_group")
     expect(payload).not.toHaveProperty("gross_weight")
   })
@@ -78,6 +103,13 @@ describe("POST /api/tenants/:tenantId/articles", () => {
     server.respond("articles:insert", { data: { id: ARTICLE, article_number: "x" } })
     await post({ ...valid, isMixed: false, mixedCount: 4 })
     expect(server.callsTo("articles", "insert")[0].payload).toMatchObject({ mixed_count: null })
+  })
+
+  it("accepts an article without the optional Basisartikel reference", async () => {
+    asWriter()
+    server.respond("articles:insert", { data: { id: ARTICLE, article_number: "12345.0042", match_code: "" } })
+    expect((await post(valid)).status).toBe(201)
+    expect(server.callsTo("articles", "insert")[0].payload).toMatchObject({ base_article_id: null })
   })
 
   it("returns 401 without a session", async () => {
@@ -110,8 +142,13 @@ describe("POST /api/tenants/:tenantId/articles", () => {
   it.each([
     ["kennziffer too short", { ...valid, kennziffer: "123" }, "kennziffer"],
     ["kennziffer with letters", { ...valid, kennziffer: "12a4" }, "kennziffer"],
-    ["missing base article", { kennziffer: "0042" }, "baseArticleId"],
+    ["missing base article number", { kennziffer: "0042" }, "baseArticleNumber"],
+    ["base article number with letters", { ...valid, baseArticleNumber: "12a" }, "baseArticleNumber"],
+    ["base article number with a dot", { ...valid, baseArticleNumber: "12.3" }, "baseArticleNumber"],
+    ["base article number too long", { ...valid, baseArticleNumber: "12345678901" }, "baseArticleNumber"],
+    ["empty base article number", { ...valid, baseArticleNumber: "" }, "baseArticleNumber"],
     ["invalid base article id", { ...valid, baseArticleId: "nope" }, "baseArticleId"],
+    ["invalid pallet class id", { ...valid, palletClassId: "nope" }, "palletClassId"],
     ["negative weight", { ...valid, weight: -1 }, "weight"],
     ["GTIN with letters", { ...valid, gtinMain: "40abc" }, "gtinMain"],
     ["name too long", { ...valid, name: "x".repeat(201) }, "name"],
@@ -170,14 +207,22 @@ describe("POST /api/tenants/:tenantId/articles", () => {
 describe("PATCH /api/tenants/:tenantId/articles/:articleId", () => {
   it("saves the article, scoped to id + tenant, and releases the lock (200)", async () => {
     asWriter()
-    server.respond("articles:update", { data: { id: ARTICLE, article_number: "12000042" } })
+    server.respond("articles:update", {
+      data: { id: ARTICLE, article_number: "12345.0042", match_code: "" },
+    })
 
     const res = await patch({ ...valid, name: "Neu" })
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ id: ARTICLE, articleNumber: "12000042" })
+    expect(await res.json()).toEqual({ id: ARTICLE, articleNumber: "12345.0042", matchCode: "" })
 
     const call = server.callsTo("articles", "update")[0]
-    expect(call.payload).toMatchObject({ name: "Neu", kennziffer: "0042" })
+    expect(call.payload).toMatchObject({
+      name: "Neu",
+      kennziffer: "0042",
+      base_article_number: "12345",
+      base_article_id: null,
+      pallet_class_id: null,
+    })
     expect(call.filters).toEqual(
       expect.arrayContaining([
         { method: "eq", column: "id", value: ARTICLE },

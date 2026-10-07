@@ -17,7 +17,7 @@ import {
 } from "../../warenwirtschaft-shared"
 
 // POST /api/tenants/:tenantId/articles — Artikel anlegen.
-// Schreibrecht auf die Maske Artikelstamm; Artikelnummer, Warengruppe und Bruttogewicht berechnet
+// Schreibrecht auf die Maske Artikelstamm; Artikelnummer, Matchcode, Warengruppe und Bruttogewicht berechnet
 // der Datenbank-Trigger. Session-Client → RLS greift als zweite Ebene.
 export async function POST(
   request: Request,
@@ -37,7 +37,7 @@ export async function POST(
   const { data, error } = await supabase
     .from("articles")
     .insert({ tenant_id: tenantId, ...articleRow(parsed.data) })
-    .select("id, article_number")
+    .select("id, article_number, match_code")
     .single()
 
   if (error || !data) {
@@ -47,5 +47,8 @@ export async function POST(
     })
   }
 
-  return NextResponse.json({ id: data.id, articleNumber: data.article_number }, { status: 201 })
+  return NextResponse.json(
+    { id: data.id, articleNumber: data.article_number, matchCode: data.match_code },
+    { status: 201 }
+  )
 }

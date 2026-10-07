@@ -175,6 +175,7 @@ async function setupProj3(admin: SupabaseClient) {
     "merkmal_geschmackssorte",
     "merkmal_mwst",
     "merkmal_verpackungsgruppe",
+    "merkmal_palettenklasse",
   ].map((m) => [m, "write"])
 
   const rEinkauf = await role(t, "Einkauf", [["artikelstamm", "write"], ...merkmalMasks])

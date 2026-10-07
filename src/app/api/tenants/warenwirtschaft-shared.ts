@@ -53,11 +53,15 @@ function integer(label: string) {
     .transform((v) => v ?? null)
 }
 
-// Artikelnummer, Warengruppe und Bruttogewicht gehören nicht ins Schema: sie werden vom
+// Artikelnummer, Matchcode, Warengruppe und Bruttogewicht gehören nicht ins Schema: sie werden vom
 // Datenbank-Trigger berechnet; mitgeschickte Werte werden verworfen.
 export const articleSchema = z.object({
   articleTypeId: refId,
-  baseArticleId: z.uuid({ error: "Bitte einen Basisartikel wählen" }),
+  baseArticleNumber: z
+    .string({ error: "Die Basisartikelnummer muss aus 1 bis 10 Ziffern bestehen" })
+    .trim()
+    .regex(/^\d{1,10}$/, "Die Basisartikelnummer muss aus 1 bis 10 Ziffern bestehen"),
+  baseArticleId: refId,
   kennziffer: z
     .string({ error: "Die Artikelkennziffer muss genau 4 Ziffern haben" })
     .trim()
@@ -72,7 +76,7 @@ export const articleSchema = z.object({
   fairtrade: z.boolean().default(false),
   rainforest: z.boolean().default(false),
   fsc: z.boolean().default(false),
-  palletClass: text(50, "Die Palettenklasse"),
+  palletClassId: refId,
   isMixed: z.boolean().default(false),
   mixedCount: integer("Anzahl Mischartikel"),
   gtinMain: digits("GTIN Hauptartikel"),
@@ -101,6 +105,7 @@ export const articleStatusSchema = z.object({
 export function articleRow(data: ArticleInput) {
   return {
     article_type_id: data.articleTypeId,
+    base_article_number: data.baseArticleNumber,
     base_article_id: data.baseArticleId,
     kennziffer: data.kennziffer,
     name: data.name,
@@ -113,7 +118,7 @@ export function articleRow(data: ArticleInput) {
     fairtrade: data.fairtrade,
     rainforest: data.rainforest,
     fsc: data.fsc,
-    pallet_class: data.palletClass,
+    pallet_class_id: data.palletClassId,
     is_mixed: data.isMixed,
     // Anzahl nur bei Mischartikeln (wie im Formular)
     mixed_count: data.isMixed ? data.mixedCount : null,

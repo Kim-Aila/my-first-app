@@ -1,4 +1,4 @@
-// Konfiguration der 9 Merkmal-Tabellen des Artikelstamms (PROJ-3).
+// Konfiguration der 10 Merkmal-Tabellen des Artikelstamms (PROJ-3).
 // Eine einzige Pflege-Oberfläche (`MerkmalManager`) wird je Tabelle über diese Konfiguration
 // gesteuert; Artikelformular und Auswahlfelder lesen Bezeichnungen/Links ebenfalls von hier.
 import { z } from "zod"
@@ -12,6 +12,7 @@ import {
   MASK_MERKMAL_MARKENINHABER,
   MASK_MERKMAL_MWST,
   MASK_MERKMAL_PACKUNGSGROESSE,
+  MASK_MERKMAL_PALETTENKLASSE,
   MASK_MERKMAL_SAISON,
   MASK_MERKMAL_VERPACKUNGSGRUPPE,
   type MaskDefinition,
@@ -66,6 +67,11 @@ const NAME_FIELD: MerkmalField = {
   maxLength: 100,
 }
 
+/** Gewichtsfeld der Verpackungsgruppe in g (DSD-Abrechnung). */
+function weightField(key: string, column: string, label: string): MerkmalField {
+  return { key, column, label, kind: "decimal", required: false, unit: "g" }
+}
+
 const COMMODITY_DIGIT_FIELD: MerkmalField = {
   key: "commodityDigit",
   column: "commodity_digit",
@@ -114,7 +120,7 @@ export const MERKMALE: MerkmalConfig[] = [
     plural: "Basisartikel",
     mask: MASK_MERKMAL_BASISARTIKEL,
     fields: [
-      { ...CODE_FIELD, label: "Nummer", maxLength: 30, hint: "Wird Teil der Artikelnummer." },
+      { ...CODE_FIELD, maxLength: 30, hint: "Wird Teil des Matchcodes der Artikel." },
       NAME_FIELD,
       {
         key: "customsTariffNumber",
@@ -187,17 +193,22 @@ export const MERKMALE: MerkmalConfig[] = [
     mask: MASK_MERKMAL_VERPACKUNGSGRUPPE,
     fields: [
       NAME_FIELD,
-      {
-        key: "foilWeight",
-        column: "foil_weight",
-        label: "Folien-/Pappengewicht",
-        kind: "decimal",
-        required: false,
-        unit: "g",
-        hint: "Für die DSD-Abrechnung.",
-      },
+      weightField("foilSystemWeight", "foil_system_weight", "Folie Systembeteiligung"),
+      weightField("cardboardSystemWeight", "cardboard_system_weight", "Pappe Systembeteiligung"),
+      weightField("foilTransportWeight", "foil_transport_weight", "Folie Transport"),
+      weightField("cardboardTransportWeight", "cardboard_transport_weight", "Pappe Transport"),
     ],
     sortColumn: "name",
+  },
+  {
+    slug: "palettenklassen",
+    table: "pallet_classes",
+    articleKey: "palletClassId",
+    singular: "Palettenklasse",
+    plural: "Palettenklassen",
+    mask: MASK_MERKMAL_PALETTENKLASSE,
+    fields: [{ ...CODE_FIELD, label: "Klasse", hint: "Z. B. „A“; wird am Artikel ausgewählt." }],
+    sortColumn: "code",
   },
 ]
 
