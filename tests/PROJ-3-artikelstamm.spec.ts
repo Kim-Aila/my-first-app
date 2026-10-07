@@ -1334,3 +1334,221 @@ test.describe("PROJ-3 Refinement 2026-10-07: Reiter, Matchcode, Bezeichnungs-Vor
     })
   })
 })
+
+test.describe("PROJ-3 QA Refinement 2026-10-07: Randfälle und Security", () => {
+  test("AC: an invalid Basisartikelnummer (empty, letters, dot, space) is rejected in the form; nothing is saved", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const marker = `E2E QA BAN ${uid(testInfo)}`
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await page.getByLabel("Artikelkennziffer").fill("0001")
+    await page.getByLabel("Artikelbezeichnung").fill(marker)
+    for (const value of ["", "12a45", "12.3", "1 2"]) {
+      await page.getByLabel("Basisartikelnummer").fill(value)
+      await page.getByRole("button", { name: "Speichern" }).click()
+      await expect(page.getByText("Die Basisartikelnummer muss aus 1 bis 10 Ziffern bestehen")).toBeVisible()
+      await expect(page).toHaveURL(/\/artikelstamm\/neu/)
+    }
+    const { count } = await admin.from("articles").select("id", { count: "exact", head: true }).eq("name", marker)
+    expect(count).toBe(0)
+    // 10 digits are fine and compose the number with a dot
+    await page.getByLabel("Basisartikelnummer").fill("1234567890")
+    await expect(page.getByLabel("Artikelnummer", { exact: true })).toHaveText("1234567890.0001")
+  })
+
+  test("API: Basisartikelnummer injection/overlong/non-ASCII digits → 400, nothing stored", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const marker = `E2E QA INJ ${uid(testInfo)}`
+    await login(page, P3_EINKAUF)
+    for (const value of ["1; drop table articles", "12345678901", "１２３", "١٢٣", "1' or '1'='1", " ", 123, null, ["1"]]) {
+      const res = await page.request.post(`/api/tenants/${tenant}/articles`, {
+        data: { baseArticleNumber: value, kennziffer: "0001", name: marker },
+      })
+      expect(res.status(), JSON.stringify(value)).toBe(400)
+    }
+    const { count } = await admin.from("articles").select("id", { count: "exact", head: true }).eq("name", marker)
+    expect(count).toBe(0)
+  })
+
+  test("a Kürzel change via the API recomputes the Matchcode of all affected articles (also while an article is locked)", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const id = uid(testInfo)
+    const { data: season } = await admin
+      .from("seasons")
+      .insert({ tenant_id: tenant, code: `Q${id}`.slice(0, 20), name: "QA Saison", commodity_digit: 5 })
+      .select("id")
+      .single()
+    createdMerkmale.push({ table: "seasons", id: season!.id })
+    const a1 = await mkArticle(tenant, await baseArticleId(tenant), { season_id: season!.id })
+    const a2 = await mkArticle(tenant, await baseArticleId(tenant), { season_id: season!.id })
+    const before = await admin.from("articles").select("match_code").eq("id", a1.id).single()
+    expect(before.data!.match_code).toBe(`Q${id}`.slice(0, 20) + "-1200")
+
+    // lock article 1 for the first Einkauf user, change the Kürzel as the second one
+    const lockUser = await userClient(P3_EINKAUF)
+    expect((await lockUser.rpc("acquire_edit_lock", { p_tenant_id: tenant, p_resource_type: "article", p_resource_id: a1.id })).error).toBeNull()
+
+    await login(page, P3_EINKAUF2)
+    const newCode = `R${id}`.slice(0, 20)
+    const res = await page.request.patch(`/api/tenants/${tenant}/merkmale/saisons/${season!.id}`, {
+      data: { code: newCode, name: "QA Saison", commodityDigit: 5 },
+    })
+    expect(res.status()).toBe(200)
+    for (const a of [a1, a2]) {
+      const { data } = await admin.from("articles").select("match_code, article_number").eq("id", a.id).single()
+      expect(data!.match_code).toBe(`${newCode}-1200`)
+      expect(data!.article_number).toBe(a.number) // the article number does not depend on any Kürzel
+    }
+  })
+
+  test("direct database access: the Matchcode and other calculated fields cannot be forged; Palettenklassen follow rights and tenants", async ({}, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const foreign = await tenantId(P3_TENANT_FREMD)
+    const id = uid(testInfo)
+    const einkauf = await userClient(P3_EINKAUF)
+
+    const k = String(1000 + Math.floor(Math.random() * 9000))
+    const ins = await einkauf
+      .from("articles")
+      .insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, kennziffer: k, match_code: "HACK", article_number: "HACK" })
+      .select("id, match_code, article_number")
+      .single()
+    if (ins.data) createdArticles.push(ins.data.id)
+    expect(ins.error).toBeNull()
+    expect(ins.data!.match_code).toBe("")
+    expect(ins.data!.article_number).toBe(`${P3_BASE_CODE}.${k}`)
+
+    // a Basisartikelnummer that violates the format is rejected by the database as well
+    for (const bad of ["12a", "12345678901", "", "１２３"]) {
+      const res = await einkauf.from("articles").insert({ tenant_id: tenant, base_article_number: bad, kennziffer: "9999" })
+      expect(res.error, bad).not.toBeNull()
+    }
+
+    // Palettenklassen: own tenant readable, foreign tenant invisible, no delete
+    const own = await admin.from("pallet_classes").insert({ tenant_id: tenant, code: `RK${id}`.slice(0, 20) }).select("id").single()
+    createdMerkmale.push({ table: "pallet_classes", id: own.data!.id })
+    const other = await admin.from("pallet_classes").insert({ tenant_id: foreign, code: `FK${id}`.slice(0, 20) }).select("id").single()
+    createdMerkmale.push({ table: "pallet_classes", id: other.data!.id })
+    const seen = await einkauf.from("pallet_classes").select("id, tenant_id")
+    expect(seen.data!.map((r) => r.id)).toContain(own.data!.id)
+    expect(seen.data!.map((r) => r.id)).not.toContain(other.data!.id)
+    // referencing a foreign Palettenklasse is refused by the composite foreign key
+    const cross = await einkauf
+      .from("articles")
+      .insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, kennziffer: "9998", pallet_class_id: other.data!.id })
+    expect(cross.error).not.toBeNull()
+    // no hard delete of Palettenklassen, not even of the own tenant
+    await einkauf.from("pallet_classes").delete().eq("id", own.data!.id)
+    const still = await admin.from("pallet_classes").select("id").eq("id", own.data!.id)
+    expect(still.data).toHaveLength(1)
+    // a deactivated Palettenklasse cannot be chosen for new articles
+    await admin.from("pallet_classes").update({ is_active: false }).eq("id", own.data!.id)
+    const dead = await einkauf
+      .from("articles")
+      .insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, kennziffer: "9997", pallet_class_id: own.data!.id })
+    expect(dead.error).not.toBeNull()
+  })
+
+  test("rights: Artikelstamm write alone does not allow maintaining Palettenklassen; the Palettenklassen mask alone does not show articles", async ({ page }, testInfo) => {
+    const writer = await mkTenantWithUser(testInfo, [["artikelstamm", "write"]])
+    await login(page, writer.username)
+    const denied = await page.request.post(`/api/tenants/${writer.tenant}/merkmale/palettenklassen`, { data: { code: "A" } })
+    expect(denied.status()).toBe(403)
+    await page.goto(`/merkmale/palettenklassen?mandant=${writer.tenant}`)
+    await expect(page.getByText(/Kein Zugriff/)).toBeVisible()
+
+    const only = await mkTenantWithUser(testInfo, [["merkmal_palettenklasse", "write"]])
+    await page.context().clearCookies()
+    await login(page, only.username)
+    const ok = await page.request.post(`/api/tenants/${only.tenant}/merkmale/palettenklassen`, { data: { code: "A" } })
+    expect(ok.status()).toBe(201)
+    const dup = await page.request.post(`/api/tenants/${only.tenant}/merkmale/palettenklassen`, { data: { code: "a" } })
+    expect(dup.status()).toBe(409)
+    await page.goto(`/artikelstamm?mandant=${only.tenant}`)
+    await expect(page.getByText(/Kein Zugriff/)).toBeVisible()
+  })
+
+  test("XSS: Kürzel with HTML are rendered as text in the form, header and list; no script runs", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const dialogs: string[] = []
+    page.on("dialog", async (d) => {
+      dialogs.push(d.message())
+      await d.dismiss()
+    })
+    const tail = Math.random().toString(36).slice(2, 6)
+    const payload = `<i onclick=x()>${tail}`
+    const { data: season } = await admin
+      .from("seasons")
+      .insert({ tenant_id: tenant, code: payload, name: "<img src=x onerror=alert(1)>", commodity_digit: 2 })
+      .select("id")
+      .single()
+    createdMerkmale.push({ table: "seasons", id: season!.id })
+    const article = await mkArticle(tenant, await baseArticleId(tenant), { season_id: season!.id, name: "<script>alert(2)</script>" })
+
+    await login(page, P3_EINKAUF)
+    await page.goto(articleUrl(tenant, article.id))
+    await expect(page.getByText(`${payload}-1200`).first()).toBeVisible()
+    await expect(page.locator("i[onclick]")).toHaveCount(0)
+    await expect(page.locator("img[src='x']")).toHaveCount(0)
+    // the search drops filter characters like ( ) , _ % (see BUG-6), so search for the harmless tail
+    await page.goto(`/artikelstamm?mandant=${tenant}&q=${encodeURIComponent(`${tail}-1200`)}`)
+    // the Matchcode column is only shown from 1024 px up, so only require it in the DOM (as text)
+    await expect(page.getByText(`${payload}-1200`)).toBeAttached()
+    await expect(page.locator("i[onclick]")).toHaveCount(0)
+    expect(dialogs).toEqual([])
+  })
+
+  test("search by Matchcode: partial, case-insensitive; PostgREST filter characters do not break the query or leak rows", async ({ page }) => {
+    const tenant = await tenantId(P3_TENANT)
+    const article = await mkArticle(tenant, await baseArticleId(tenant), {
+      season_id: await merkmalId("seasons", tenant, "SOM"),
+      article_type_id: await merkmalId("article_types", tenant, "FW"),
+    })
+    await login(page, P3_EINKAUF)
+    for (const q of ["fw-som", "SOM-12", "W-SOM-1200"]) {
+      await page.goto(`/artikelstamm?mandant=${tenant}&q=${encodeURIComponent(q)}`)
+      await expect(page.getByRole("link", { name: article.number })).toBeVisible()
+    }
+    for (const q of ["FW-SOM,is_active.eq.false", "x),(match_code.ilike.*", "%", "_", "\\"]) {
+      const res = await page.goto(`/artikelstamm?mandant=${tenant}&q=${encodeURIComponent(q)}`)
+      expect(res!.status()).toBeLessThan(500)
+      await expect(page.getByRole("heading", { name: "Artikelstamm" })).toBeVisible()
+    }
+  })
+
+  test("header and Matchcode stay in the read-only view; a read-only user sees tabs but no edit option", async ({ page }) => {
+    const tenant = await tenantId(P3_TENANT)
+    const article = await mkArticle(tenant, await baseArticleId(tenant), {
+      season_id: await merkmalId("seasons", tenant, "SOM"),
+      name: "E2E QA Lesen",
+    })
+    await login(page, P3_LAGER)
+    await page.goto(articleUrl(tenant, article.id))
+    await expect(page.getByText(/SOM-1200 · E2E QA Lesen/)).toBeVisible()
+    await expect(page.getByRole("tab")).toHaveCount(5)
+    await expect(page.getByRole("button", { name: "Bearbeiten" })).toHaveCount(0)
+    await openTab(page, "Verpackung & Logistik")
+    await expect(page.getByLabel("GTIN Hauptartikel")).toBeDisabled()
+    await expect(page.getByRole("combobox", { name: /Palettenklasse/ })).toBeDisabled()
+  })
+})
+
+test.describe("PROJ-3 QA Refinement: known bugs (open)", () => {
+  test("BUG-6 (open): a Kürzel containing '_' can be found in the list search", async ({ page }, testInfo) => {
+    // Remove test.fail() once the list search escapes filter characters instead of dropping them.
+    test.fail()
+    const tenant = await tenantId(P3_TENANT)
+    const id = uid(testInfo)
+    const code = `A_${id}`.slice(0, 20)
+    const { data: season } = await admin
+      .from("seasons")
+      .insert({ tenant_id: tenant, code, name: "QA Unterstrich", commodity_digit: 1 })
+      .select("id")
+      .single()
+    createdMerkmale.push({ table: "seasons", id: season!.id })
+    const article = await mkArticle(tenant, await baseArticleId(tenant), { season_id: season!.id })
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm?mandant=${tenant}&q=${encodeURIComponent(code)}`)
+    await expect(page.getByRole("link", { name: article.number })).toBeVisible({ timeout: 3000 })
+  })
+})

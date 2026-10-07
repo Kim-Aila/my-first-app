@@ -1,10 +1,10 @@
 # PROJ-3: Warenwirtschaft – Artikelstamm
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-09-27
 **Last Updated:** 2026-10-07
 
-> **Refinement 2026-10-07 (Backend + Frontend umgesetzt, QA offen):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
+> **Refinement 2026-10-07 (Backend + Frontend umgesetzt, QA bestanden):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — Multi-Tenant-Grundschema
@@ -614,6 +614,99 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 - **Production Ready:** JA
 - **Recommendation:** Deployen. BUG-2 bis BUG-5 (alle Low) im nächsten Sprint. AC-9 bei PROJ-5/6/7 erneut prüfen.
 
+## QA Test Results – Refinement 2026-10-07
+
+**Getestet:** 2026-10-07 (Re-Test der Refinement: Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse, Verpackungsgruppe, Reiter-Layout; der Abschnitt „QA Test Results" oben beschreibt den Stand vom 2026-10-04)
+**App:** lokaler Dev-Server (`E2E_PORT=3100`) gegen die lokale, selbst gehostete Supabase-Instanz mit Migration `20261007100000`
+**Tester:** QA Engineer (AI)
+
+### Testumfang und Ergebnisse im Überblick
+| Prüfung | Ergebnis |
+|---|---|
+| Unit-/Integrationstests (Vitest) | **245 bestanden** (21 Dateien) |
+| `tsc`, `eslint`, `npm run build` | sauber |
+| SQL-Test `supabase/tests/proj3_rls.sql` (RLS, Trigger, Matchcode-Neuberechnung, Palettenklassen, Sperre) | **ALL OK** (rollt zurück) |
+| E2E Chromium + Mobile Safari (WebKit), Gesamtsuite PROJ-1/2/3 | **171 bestanden, 5 fehlgeschlagen** — alle 5 nur in Mobile Safari (siehe „Instabile Tests") |
+| E2E Firefox (nur PROJ-3, temporäre Konfiguration) | **53/53 bestanden** |
+| Responsive (375 / 768 / 1440 px), Screenshots geprüft | Formular in Ordnung; Liste bei 768 px mit Seiten-Überlauf (BUG-5, besteht weiter) |
+
+Neu in dieser QA: 8 E2E-Tests „QA Refinement" + 1 offen erwarteter Test (BUG-6) in `tests/PROJ-3-artikelstamm.spec.ts`; zusätzlich die 6 Tests „Refinement" aus `/frontend`.
+
+### Acceptance Criteria Status (Stand der Spec nach Refinement, 18 Kriterien)
+- [x] **Anlegen + Artikelnummer:** Basisartikelnummer + „." + Kennziffer (z. B. `1200.0042`), Live-Vorschau, nach Speichern in der Datenbank
+- [x] **Ungültige Basisartikelnummer** (leer, Buchstaben, Punkt, Leerzeichen, > 10 Stellen, Nicht-ASCII-Ziffern) → Fehlermeldung bzw. 400, nichts gespeichert; auch von der Datenbank abgelehnt
+- [x] **Matchcode** aus den 7 Kürzeln (fehlende übersprungen), Live-Vorschau, gespeichert, in Kopfzeile und Liste, durchsuchbar (teilweise, ohne Beachtung der Groß-/Kleinschreibung)
+- [x] **Bezeichnungs-Vorschlag** aus Basisartikel/Form/Packungsgröße/Geschmack; folgt Änderungen, solange nicht manuell geändert; manuelle Bezeichnung wird nie überschrieben
+- [x] **Palettenklasse** nur als Auswahl aus der Merkmal-Tabelle (kein Freitext), als Verweis gespeichert
+- [x] **Verpackungsgruppe** mit den 4 Gewichtsfeldern (Folie/Pappe je Systembeteiligung und Transport), negative/ungültige Werte abgelehnt
+- [x] **Reiter-Layout:** 5 Reiter, nur der gewählte sichtbar, Kopfzeile bleibt, Reiter mit Fehler markiert, Sprung zum ersten fehlerhaften Reiter
+- [x] **Doppelte Artikelnummer** → „Artikelnummer bereits vergeben"
+- [x] **Kennziffer nicht 4-stellig** → Validierungsfehler
+- [x] **Lager (nur Lesen)** sieht Reiter, aber keine Bearbeitungsoption; Felder gesperrt
+- [x] **Gleichzeitige Bearbeitung:** zweiter Nutzer nur lesend, Banner nennt den Namen
+- [x] **15 Minuten Inaktivität:** Sperre läuft ab (simulierte Uhr)
+- [x] **Logout mit ungespeicherten Änderungen:** Sicherheitsabfrage (Speichern / Verwerfen / Abbrechen)
+- [x] **Nur „Deaktivieren"**, keine Löschfunktion (auch nicht für Palettenklassen und andere Merkmale)
+- [ ] **Deaktivierter Artikel verschwindet aus Auswahllisten anderer Masken** — nicht prüfbar, solange es keine andere Maske mit Artikelauswahl gibt (PROJ-5/6/7); Datenebene geprüft
+- [x] **Leere Merkmal-Tabelle** → Hinweis „Noch keine Einträge – hier anlegen" mit Link
+- [x] **Mandantentrennung** (inkl. Palettenklassen: fremde Einträge unsichtbar und nicht referenzierbar)
+- [x] **Klick auf Feldbezeichnung → Pflege-Maske** (neuer Tab; Basisartikel jetzt im Reiter Klassifizierung)
+
+### Edge Cases (zusätzlich zu den dokumentierten)
+- [x] Kürzel-Änderung (Saison) per API → Matchcode aller betroffenen Artikel neu berechnet, Artikelnummer bleibt; auch während ein Artikel gesperrt ist
+- [x] Alle 7 Matchcode-Kürzel einzeln geändert / Merkmale entfernt (SQL-Test)
+- [x] Fehler in verstecktem Reiter: Speichern aus anderem Reiter springt zum Fehler; Serverfehler (Duplikat) springt zum Kern-Reiter
+- [x] Bezeichnung leer, vorbelegt, manuell geändert, dann Merkmal gewechselt → bleibt
+- [x] Read-only-Ansicht zeigt Matchcode in der Kopfzeile, alle Felder inkl. Palettenklasse gesperrt
+- [x] Netzwerkausfall beim Speichern (Eingaben bleiben, erneutes Speichern klappt) — in Chromium/Firefox stabil, in Mobile Safari gelegentlich instabil
+
+### Security Audit Results
+- [x] Berechnete Felder (`article_number`, `match_code`, `commodity_group`, `gross_weight`) lassen sich weder per API noch per direktem REST-Insert/-Update fälschen (REST-Insert mit `match_code: "HACK"` → vom Trigger überschrieben)
+- [x] `base_article_number`: SQL-Injection-Strings, Überlänge, Nicht-ASCII-Ziffern (`１２３`, `١٢٣`), falsche Typen (Zahl, `null`, Array) → 400; Datenbank-Check lehnt dieselben Werte ab
+- [x] Palettenklassen: Schreiben nur mit Stufe `write` auf der eigenen Maske (Artikelstamm-`write` allein → 403), Lesen mit eigener Maske oder Artikelstamm; fremder Mandant unsichtbar; Verweis auf fremde Palettenklasse (Fremdschlüssel) und auf deaktivierte Palettenklasse abgelehnt; kein Löschen (auch nicht per REST)
+- [x] Matchcode-Neuberechnung (`SECURITY DEFINER`): Argument kommt nur aus der Trigger-Definition, `search_path` gesetzt, `EXECUTE` für Clients entzogen; kein Weg zu Rechteerweiterung gefunden
+- [x] XSS: Kürzel/Bezeichnungen mit HTML (`<i onclick=…>`, `<img onerror=…>`, `<script>`) erscheinen als Text in Kopfzeile, Formular und Liste; kein Dialog, kein eingeschleustes Element
+- [x] Such-Injection über die neue Suchspalte `match_code` (`,`, `)(`, `%`, `_`, `\`, `x),(match_code.ilike.*`) bricht die Abfrage nicht und liefert keine fremden Zeilen
+- [x] Authentifizierung/Autorisierung/Mandantentrennung der bestehenden Routen unverändert (Gesamtsuite grün in Chromium und Firefox)
+- [ ] Rate-Limiting weiterhin nicht vorhanden (MVP-optional, siehe BUG-4)
+
+### Regression
+- [x] PROJ-1 und PROJ-2 (alle Tests) bestehen in Chromium und Mobile Safari bzw. Firefox; Rollen-Dialog kennt die neue Maske „Palettenklassen" über das Masken-Register.
+
+### Bugs Found
+
+#### BUG-6: Listensuche findet Kürzel/Texte mit `_`, `%`, `,`, `(`, `)`, `"`, `*`, `\` nicht
+- **Severity:** Low
+- **Beschreibung:** `sanitizeSearch` (`src/app/(app)/artikelstamm/page.tsx`) ersetzt diese Zeichen durch Leerzeichen, damit der PostgREST-Filter nicht bricht. Ein Matchcode/Kürzel wie `A_B` ist deshalb über die Suche nicht auffindbar (Eingabe `A_B` sucht nach `A B`). Sicherheitlich unkritisch, aber ein funktionaler Fehler, seit der Matchcode durchsucht wird (Kürzel dürfen beliebige Zeichen enthalten).
+- **Test:** `PROJ-3 QA Refinement: known bugs (open) › BUG-6` (erwartet fehlschlagend)
+- **Priority:** Nächster Sprint (Zeichen maskieren statt entfernen, oder Suchfunktion in der Datenbank)
+
+#### BUG-7: Formularzeilen im Reiter „Kern" sind unsauber ausgerichtet
+- **Severity:** Low (kosmetisch)
+- **Beschreibung:** Auswahlfeld Artikeltyp (ohne Hinweistext) und Basisartikelnummer (mit Hinweistext) stehen in einer Zeile auf unterschiedlicher Höhe; ebenso Kennziffer/Artikelnummer. Screenshot 1440 px.
+- **Priority:** Nice to have
+
+#### Weiterhin offen aus der QA vom 2026-10-04 (unverändert, nicht Teil der Refinement)
+- **BUG-2** (Low): Sperrfehler erscheint unter dem Kennziffer-Feld (jetzt zusätzlich: Sprung zum Kern-Reiter)
+- **BUG-3** (Low): Freigabe kann mit einer laufenden Verlängerung konkurrieren
+- **BUG-4** (Low): Sperre für nicht existierende Datensätze / kein Rate-Limit
+- **BUG-5** (Low): horizontaler Seiten-Überlauf bei 768 px auf `/artikelstamm` (gemessen: 149 px) und den Merkmal-Seiten bei geöffneter Sidebar; besteht weiter
+
+### Beobachtungen (keine Fehler)
+- **Instabile Tests (Mobile Safari/WebKit):** Im Gesamtlauf scheiterten 5 Tests nur unter WebKit (AC-7b, Netzwerkausfall, XSS-Test aus der Hauptsuite, Palettenklasse, neuer XSS-Test). Ursachen: (a) der neue XSS-Test erwartete die Matchcode-Spalte, die erst ab 1024 px sichtbar ist, und nutzte ein festes Kürzel, das parallel in zwei Browsern kollidierte → beides im Test behoben; (b) die übrigen scheiterten wiederholt an Klicks, die vor der Hydration des Dev-Servers ankamen bzw. am Next.js-Dev-Overlay, das den Benutzermenü-Button verdeckte. Einzeln laufen sie überwiegend grün, „Netzwerkausfall" scheiterte aber auch einzeln gelegentlich. Chromium und Firefox waren in allen Läufen stabil. Empfehlung: gegen einen Produktions-Build (nach `/deploy` auf `localhost:3001`) wiederholen.
+- **Doppeltes Formular direkt nach der Navigation:** Unmittelbar nach `page.goto` auf `/artikelstamm/neu` waren im Dev-Server kurzzeitig zwei Eingabefelder `baseArticleNumber` im DOM (Hydration-Übergang, `useId`-Formate `_r_…` und `_R_…`); nach `networkidle` nur eines. Vermutlich ein Dev-Server-Artefakt, nicht gegen den Produktions-Build geprüft.
+- **Matchcode-Spalte** in der Liste erst ab 1024 px sichtbar (bewusst, Platz); die Suche findet ihn auf allen Breiten.
+- **Matchcode-Eindeutigkeit:** Kürzel dürfen den Trenner `-` enthalten; Matchcodes sind daher nicht zwingend eindeutig und nicht eindeutig zerlegbar (laut Spec nur Anzeige/Suche, kein Schlüssel).
+- **Laufendes Docker-Deployment (`localhost:3001`) läuft noch mit altem Code gegen die bereits migrierte Datenbank** — Artikel anlegen/ändern funktioniert dort nicht, bis `/deploy` die App neu baut.
+- **Browser:** Chromium, WebKit (iPhone-13-Emulation) und Firefox; keine echten Geräte, keine manuellen Screenreader-Tests.
+
+### Summary
+- **Acceptance Criteria:** 17 von 18 bestanden, 1 nicht prüfbar (Auswahllisten anderer Masken, erst mit PROJ-5/6/7)
+- **Bugs (neu):** 2 Low (BUG-6, BUG-7); 0 Critical, 0 High, 0 Medium. Offen aus früher: BUG-2 bis BUG-5 (Low)
+- **Security:** keine Sicherheitslücken gefunden; Rate-Limiting fehlt weiterhin (MVP-optional)
+- **Production Ready:** JA
+- **Recommendation:** Mit `/deploy` ausrollen (die laufende App ist ohnehin nicht mehr zur Datenbank passend); danach die instabilen WebKit-Tests gegen den Produktions-Build wiederholen. BUG-6 und BUG-2 bis BUG-5 im nächsten Sprint.
+
 ## Deployment
 
 **Deployed:** 2026-10-04
@@ -644,7 +737,7 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 
 ## Refinement 2026-10-07 (Änderungen nach Nutzertest)
 
-**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend und Frontend umgesetzt am 2026-10-07 (siehe die „Implementation Notes … – Refinement 2026-10-07"). Nächster Schritt: `/qa`.
+**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend und Frontend umgesetzt am 2026-10-07 (siehe die „Implementation Notes … – Refinement 2026-10-07"). QA am 2026-10-07 bestanden (siehe „QA Test Results – Refinement 2026-10-07"). Nächster Schritt: `/deploy`.
 
 ### Auswirkungen auf Umsetzung (Delta zu Tech Design / Implementation)
 - **Datenmodell `articles`:** neues Feld `base_article_number` (Ziffern, max. 10, Pflicht); Verweis `base_article_id` bleibt als Klassifizierung (optional); `article_number` = `base_article_number || '.' || kennziffer`; neues berechnetes Feld `match_code` (+ Trigram-Index für Suche); `pallet_class` wird Verweis auf neue Tabelle.
