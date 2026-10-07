@@ -1,10 +1,10 @@
 # PROJ-3: Warenwirtschaft – Artikelstamm
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-09-27
 **Last Updated:** 2026-10-07
 
-> **Refinement 2026-10-07 (Backend + Frontend umgesetzt, QA bestanden):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
+> **Refinement 2026-10-07 (umgesetzt, QA bestanden, deployed 2026-10-07):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — Multi-Tenant-Grundschema
@@ -737,7 +737,7 @@ Neu in dieser QA: 8 E2E-Tests „QA Refinement" + 1 offen erwarteter Test (BUG-6
 
 ## Refinement 2026-10-07 (Änderungen nach Nutzertest)
 
-**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend und Frontend umgesetzt am 2026-10-07 (siehe die „Implementation Notes … – Refinement 2026-10-07"). QA am 2026-10-07 bestanden (siehe „QA Test Results – Refinement 2026-10-07"). Nächster Schritt: `/deploy`.
+**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend und Frontend umgesetzt am 2026-10-07 (siehe die „Implementation Notes … – Refinement 2026-10-07"). QA am 2026-10-07 bestanden (siehe „QA Test Results – Refinement 2026-10-07"). Deployed am 2026-10-07 (siehe „Deployment – Refinement 2026-10-07").
 
 ### Auswirkungen auf Umsetzung (Delta zu Tech Design / Implementation)
 - **Datenmodell `articles`:** neues Feld `base_article_number` (Ziffern, max. 10, Pflicht); Verweis `base_article_id` bleibt als Klassifizierung (optional); `article_number` = `base_article_number || '.' || kennziffer`; neues berechnetes Feld `match_code` (+ Trigram-Index für Suche); `pallet_class` wird Verweis auf neue Tabelle.
@@ -746,3 +746,25 @@ Neu in dieser QA: 8 E2E-Tests „QA Refinement" + 1 offen erwarteter Test (BUG-6
 - **Frontend:** Reiter-Layout (tabs-Komponente) mit Fehlermarkierung; Matchcode-Anzeige in Kopfzeile/Kern; Bezeichnungs-Vorschlag mit „manuell geändert"-Merker; Basisartikelnummer-Feld mit Live-Vorschau `12345.0001`; Palettenklasse als Auswahlfeld; Artikelliste durchsucht zusätzlich den Matchcode.
 - **Tests:** bestehende Unit-/E2E-Tests zu Artikelnummer, Basisartikel und Verpackungsgruppe müssen angepasst werden; Testdaten dürfen bereinigt werden.
 - **Offene Low-Bugs aus QA (BUG-2 bis BUG-5)** können beim selben Durchgang mit erledigt werden.
+
+## Deployment – Refinement 2026-10-07
+
+**Deployed:** 2026-10-07
+**Ziel:** wie bei PROJ-1/2/3 der selbst gehostete Docker-Container `my-first-app-app-1` (nicht Vercel), neu gebaut und neu erstellt; dahinter die lokale, selbst gehostete Supabase-Instanz. Die Migration `20261007100000_proj3_refinement.sql` war bereits seit `/backend` angewendet (und in `schema_migrations` eingetragen) — das laufende Deployment war seitdem inkompatibel zur Datenbank und ist jetzt wieder konsistent.
+**Zugriff:** `http://localhost:3001` (nur an `127.0.0.1` gebunden)
+**Git-Tag:** `v1.3.0-PROJ-3` (lokal; nicht gepusht)
+
+**Pre-Deployment-Checks (alle bestanden):**
+- `npm run lint` sauber; `npm run build` (in `/qa` und im Docker-Build) erfolgreich
+- QA: Approved (17/18 Acceptance Criteria, 1 nicht prüfbar bis PROJ-5/6/7), keine Critical/High-Bugs
+- Keine `.env*`-/Secret-Dateien im Diff seit dem letzten Deploy; keine neuen Umgebungsvariablen
+- Working Directory sauber, Migration `20261007100000` als angewendet bestätigt
+
+**Deploy-Schritte:** `docker compose --env-file .env.local build` → `docker compose --env-file .env.local up -d` (Container neu erstellt).
+
+**Verifikation gegen `http://localhost:3001`:**
+- ohne Anmeldung: `/login` → 200; `/`, `/artikelstamm`, `/merkmale/palettenklassen` → 307 auf `/login`; `POST …/articles`, `…/locks`, `…/merkmale/palettenklassen` → 401
+- `tests/PROJ-3-artikelstamm.spec.ts` gegen den Container: **Chromium 53/53 bestanden**; **Mobile Safari 49/53** im Parallellauf — die 4 Fehlschläge (AC-5, „calculated fields", Reiter-Fehlermarkierung, Read-only-Ansicht) laufen einzeln mit einem Worker alle grün (12,7 s). Das bestätigt das in der QA beschriebene Muster instabiler WebKit-Tests unter Parallellast (wechselnde Tests je Lauf); gegen den Produktions-Build war es nicht besser, die Ursache liegt also vermutlich im Test-Timing (Hydration/Klick), nicht im Produktionscode — nicht abschließend geklärt.
+- Container-Logs ohne Fehler; nach den Läufen 0 Test-Reste in der Datenbank (Artikel/Mandanten `E2E…`)
+
+**Weiterhin offen:** Fehler-Tracking und Security-Header (`docs/production/…`, bestehende Schuld seit PROJ-1); Low-Bugs BUG-2 bis BUG-7; Remote-Push (`origin` = GitHub) nicht ausgeführt.
