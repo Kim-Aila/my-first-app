@@ -158,11 +158,19 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 | Keine automatische Vorbefüllung von Merkmal-Tabellen bei neuem Mandanten | Nutzerentscheidung; Mandanten pflegen ihre Merkmale selbst (Leerhinweis mit Direktlink greift) | 2026-10-04 |
 | Merkmal-Einträge nur deaktivierbar, nicht löschbar | Konsistent mit Artikeln; Verweise bleiben intakt | 2026-10-04 |
 | Kein manuelles Aufheben fremder Sperren; Sperr-Meldung nennt den sperrenden Nutzer (auch in der Fehleranzeige beim Speichern/Bearbeiten) | Nutzerentscheidung; 15-Min.-Ablauf genügt, Transparenz über Namen | 2026-10-04 |
+| Matchcode wird beim Speichern serverseitig berechnet und gespeichert (mit Trigram-Suchindex) | Schnelle Suche, eine zentrale Berechnungsstelle wie bei Artikelnummer/Warengruppe | 2026-10-07 |
+| Änderung eines Kürzels (7 Merkmal-Tabellen) berechnet Matchcodes betroffener Artikel automatisch neu, auch bei Nutzern nur mit Merkmal-Rechten | Gleiches Muster wie Warengruppen-Ziffer-Neuberechnung; Matchcodes veralten nicht | 2026-10-07 |
+| Artikelnummer hängt nur noch an `Basisartikelnummer`; Neuberechnung bei Merkmal-Nummernänderung entfällt; Basisartikel-Verweis am Artikel wird optional | Entkopplung von Basisartikelnummer und Merkmal (Refinement) | 2026-10-07 |
+| Bezeichnungs-Vorschlag nur im Frontend, kein DB-Feld für „manuell geändert"; bestehende Bezeichnungen gelten als manuell | Server speichert nur bestätigten Wert; verhindert Überschreiben | 2026-10-07 |
+| Reiter-Layout als ein Formular (tabs-Komponente, alle Reiter gemountet), Fehlermarkierung am Reiter, Sprung zum ersten fehlerhaften Reiter | Ein Speichern, Validierung über alle Reiter; keine neuen Pakete | 2026-10-07 |
+| Umbau als zusätzliche Migration (Palettenklassen-Tabelle + RLS, Verpackungsgruppe +3 Felder, Basisartikel-Kürzel, Artikel-Felder, Matchcode-Index, Masken-Register +1); Testdaten werden bereinigt | Bestehende angewendete Migrationen bleiben unverändert; Nutzerentscheidung zur Datenbereinigung | 2026-10-07 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
+
+> **Update 2026-10-07 (Refinement):** Das Delta zum Stand vom 2026-10-04 steht gesammelt im Abschnitt „F) Delta-Design Refinement 2026-10-07" am Ende dieses Tech Designs. Wo A)–E) davon abweichen (Basisartikel-Auswahl, 9 statt 10 Merkmal-Tabellen, Abschnitte statt Reiter), gilt F).
 
 ### A) Komponentenstruktur
 
@@ -284,6 +292,84 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabelle, Pagination, Accordi
 - **Sidebar:** Neue Gruppe "Warenwirtschaft".
 - **Masken-Register:** 10 neue Einträge.
 - **Logout:** Neue Sicherheitsabfrage bei ungespeicherten Änderungen.
+
+### F) Delta-Design Refinement 2026-10-07
+
+#### F1) Komponentenstruktur (nur Änderungen)
+
+```
+Sidebar → Warenwirtschaft → Merkmale
+└── NEU: Palettenklassen (jetzt 10 Merkmal-Masken + Artikelstamm = 11 Masken)
+
+Artikelstamm – Liste
+├── Suche: Artikelnummer / Bezeichnung / NEU: Matchcode
+└── Tabelle: NEU Spalte "Matchcode"
+
+Artikel – Detailseite
+├── Kopfzeile (immer sichtbar, über allen Reitern):
+│   Artikelnummer, NEU Matchcode, Status-Badge, Aktionen, Sperr-Banner
+└── NEU: Reiter statt einklappbarer Abschnitte (ein Formular, ein Speichern)
+    ├── Kern & Identifikation (Standard-Reiter)
+    │   ├── Artikeltyp
+    │   ├── NEU Basisartikelnummer (Ziffernfeld) + Kennziffer
+    │   │   └── Live-Vorschau "Artikelnummer: 12345.0001"
+    │   ├── Matchcode + Warengruppe (berechnete Anzeige)
+    │   └── Bezeichnung (mit Vorschlag) + Beschreibung
+    ├── Klassifizierung (Markeninhaber, Saison, Basisartikel [Merkmal], Form/Design,
+    │   Packungsgröße, Geschmackssorte)
+    ├── Zertifizierungen
+    ├── Verpackung & Logistik (Palettenklasse jetzt als Auswahlfeld mit Link)
+    └── Steuern & Zoll
+    Reiter mit Validierungsfehlern werden markiert (z.B. roter Punkt)
+
+Bezeichnungs-Vorschlag (Baustein im Kern-Reiter)
+└── Füllt die Bezeichnung aus Basisartikel + Form/Design + Packungsgröße + Geschmackssorte,
+    solange der Nutzer sie nicht selbst geändert hat
+
+Merkmal-Pflege (weiterhin EINE konfigurierbare Seite, jetzt 10-mal konfiguriert)
+├── Basisartikel: Spalte/Feld "Kürzel" statt "Nummer"
+├── NEU Palettenklasse: nur ein Feld "Klasse"
+└── Verpackungsgruppe: 4 Gewichtsfelder statt einem
+```
+
+#### F2) Datenmodell (nur Änderungen, plain language)
+
+**Artikel – geänderte/neue Informationen:**
+- **Basisartikelnummer** (neu): eigenes Zifferfeld am Artikel, Pflicht, max. 10 Stellen, variable Länge
+- **Verweis auf Basisartikel** (Merkmal) bleibt, ist aber **optional** und liefert nur Kürzel (Matchcode), Bezeichnung (Vorschlag) und Zolltarifnummer
+- **Artikelnummer** = Basisartikelnummer + „." + Kennziffer, weiterhin automatisch zusammengesetzt und pro Mandant eindeutig (wegen des Punktes sind unterschiedlich lange Basisnummern nie verwechselbar)
+- **Matchcode** (neu, automatisch berechnet und mitgespeichert): Kürzel von Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, mit Bindestrich getrennt, nicht gewählte Merkmale entfallen; durchsuchbar (Suchindex wie bei Artikelnummer/Bezeichnung)
+- **Palettenklasse**: kein Freitext mehr, sondern Verweis auf die neue Merkmal-Tabelle
+
+**Merkmal-Tabellen (jetzt 10):**
+- Basisartikel: „Nummer" → **Kürzel** (je Mandant eindeutig, wie die anderen Kürzel), Bezeichnung, Zolltarifnummer
+- **Palettenklasse (neu):** nur die Klasse (Kürzel, z.B. „A"), je Mandant eindeutig, startet leer, nur deaktivierbar
+- Verpackungsgruppe: Bezeichnung + **4 Gewichtsfelder in g** (Folie Systembeteiligung, Pappe Systembeteiligung, Folie Transport, Pappe Transport)
+
+**Masken-Register:** 1 neue Maske (Palettenklassen) → insgesamt 11 Masken im Modul „Warenwirtschaft"; Standard-Rechte wie bei den anderen Merkmal-Masken.
+
+**Datenbereinigung:** Die vorhandenen Artikel sind reine Testdaten und dürfen beim Umbau bereinigt werden (Nutzerentscheidung) — keine aufwendige Datenübernahme nötig.
+
+#### F3) Technische Entscheidungen (für PM verständlich)
+
+14. **Matchcode wird beim Speichern berechnet und gespeichert, nicht bei jeder Suche** — Dadurch ist die Suche schnell (eigener Suchindex) und der Wert für Agenten und Listen sofort verfügbar. Berechnet wird an derselben zentralen Stelle wie Artikelnummer und Warengruppe.
+15. **Ändert sich ein Kürzel in einer Merkmal-Tabelle, werden alle betroffenen Matchcodes automatisch neu berechnet** — Gleiche Logik wie bereits bei den Warengruppen-Ziffern. Ein Kürzel darf also weiter geändert werden, ohne dass Matchcodes veralten. Die Neuberechnung geschieht auch dann, wenn der ändernde Nutzer nur Rechte auf die Merkmal-Maske hat.
+16. **Basisartikelnummer und Basisartikel-Merkmal sind getrennt** — Die Artikelnummer hängt nur noch an der Zifferneingabe am Artikel. Damit entfällt die frühere Neuberechnung aller Artikelnummern bei Änderung einer Merkmal-Nummer; das Merkmal beeinflusst nur noch Matchcode, Bezeichnungsvorschlag und Zolltarif.
+17. **Bezeichnungs-Vorschlag nur in der Oberfläche, ohne eigenes Datenbankfeld** — Der Server speichert nur die Bezeichnung, die der Nutzer bestätigt. Ob sie „manuell geändert" wurde, merkt sich die Maske selbst (Bezeichnung weicht vom letzten Vorschlag ab). Bei bestehenden Artikeln gilt eine vorhandene Bezeichnung als manuell → wird nie überschrieben.
+18. **Reiter-Layout als ein einziges Formular** — Alle Reiter gehören zu einem Formular mit einem Speichern; nicht sichtbare Reiter bleiben im Hintergrund erhalten, sodass Eingaben und Fehlerprüfung über alle Reiter hinweg funktionieren. Reiter mit Fehlern werden markiert, beim Speichern springt die Maske zum ersten Reiter mit Fehler. Kopfzeile (Artikelnummer, Matchcode, Status, Aktionen) bleibt außerhalb der Reiter.
+19. **Palettenklasse und Verpackungsgruppe-Gewichte folgen den bestehenden Mustern** — Die Pflege-Oberfläche wird nur um eine Konfiguration (Palettenklasse) und drei Felder erweitert; Rechte, Sperrverhalten, Deaktivieren-statt-Löschen und Mandantentrennung gelten unverändert.
+20. **Umsetzung als neue Datenbank-Migration** (keine Änderung bestehender Migrationen) — Bereits angewendete Migrationen bleiben unangetastet; die Änderungen kommen als zusätzliche Migration, bestehende Testdaten werden dabei bereinigt.
+
+#### F4) Abhängigkeiten (Pakete)
+Keine neuen Pakete. Das shadcn/ui-Bauteil „Tabs" ist bereits installiert.
+
+#### F5) Auswirkungen auf bestehende Teile
+- **Datenbank:** neue Migration (Artikel-Felder, Palettenklassen-Tabelle, Verpackungsgruppen-Felder, Basisartikel-Kürzel, Matchcode-Berechnung inkl. Folge-Berechnung bei Kürzeländerung, Suchindex, Masken-Register + Rechte-Default, RLS für `pallet_classes`).
+- **Schnittstellen:** Artikel-Routen (Basisartikelnummer, Matchcode im Ergebnis, Palettenklasse als Verweis); Merkmal-Routen um Palettenklassen erweitert; Zod-Validierung für neue Felder.
+- **Frontend:** Artikelformular (Reiter, Vorschläge, Live-Vorschau), Liste (Matchcode-Suche/-Spalte), Merkmal-Konfiguration (Basisartikel, Palettenklasse, Verpackungsgruppe), Sidebar (+1 Eintrag), Berechnungs-Helfer für die Live-Vorschau (Artikelnummer, Matchcode).
+- **Tests:** Unit-/E2E-Tests zu Artikelnummer, Basisartikel, Palettenklasse und Verpackungsgruppe anpassen; neue Tests für Matchcode (inkl. Neuberechnung bei Kürzeländerung) und Reiter-Fehlermarkierung; SQL-RLS-Test für `pallet_classes`.
+- **Offene Low-Bugs BUG-2 bis BUG-5** können im selben Durchgang erledigt werden.
+- **PROJ-4 (später):** Markeninhaber wird dann auf Adressen umgestellt; der Matchcode zieht das Kürzel dann aus der Adresse. Keine Vorarbeit jetzt nötig.
 
 ## Implementation Notes (Frontend)
 
@@ -504,7 +590,7 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 
 ## Refinement 2026-10-07 (Änderungen nach Nutzertest)
 
-**Status:** Spec angepasst, Umsetzung offen. Nächste Schritte: `/architecture` (Delta), dann `/backend`, `/frontend`, `/qa`.
+**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Umsetzung offen. Nächste Schritte: `/backend`, `/frontend`, `/qa`.
 
 ### Auswirkungen auf Umsetzung (Delta zu Tech Design / Implementation)
 - **Datenmodell `articles`:** neues Feld `base_article_number` (Ziffern, max. 10, Pflicht); Verweis `base_article_id` bleibt als Klassifizierung (optional); `article_number` = `base_article_number || '.' || kennziffer`; neues berechnetes Feld `match_code` (+ Trigram-Index für Suche); `pallet_class` wird Verweis auf neue Tabelle.
