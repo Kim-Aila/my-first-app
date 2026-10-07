@@ -2,7 +2,9 @@
 
 ## Status: Deployed
 **Created:** 2026-09-27
-**Last Updated:** 2026-10-04
+**Last Updated:** 2026-10-07
+
+> **Refinement 2026-10-07 (offen, noch nicht umgesetzt):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — Multi-Tenant-Grundschema
@@ -12,25 +14,27 @@
 - Als Administrator möchte ich alle Artikeltypen (Rohstoff, Verpackung, Halbfertigware, Fertigware) in einem zentralen Artikelstamm verwalten, damit Daten nicht doppelt gepflegt werden.
 - Als Einkauf/Verkauf möchte ich Artikel anlegen und bearbeiten können, damit ich neue Produkte/Rohstoffe schnell erfassen kann.
 - Als Lager/Produktionsplanung möchte ich Artikeldaten einsehen können (Lesezugriff), damit ich ohne Rückfragen auf aktuelle Daten zugreifen kann.
-- Als Administrator möchte ich die Merkmal-Tabellen (Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, Mehrwertsteuersatz, Verpackungsgruppe) zentral pflegen, damit die Artikelnummern-/Warengruppenlogik konsistent bleibt.
+- Als Administrator möchte ich die Merkmal-Tabellen (Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, Palettenklasse, Mehrwertsteuersatz, Verpackungsgruppe) zentral pflegen, damit die Matchcode-/Warengruppenlogik konsistent bleibt.
+- Als Nutzer möchte ich Artikel über einen automatisch erzeugten Matchcode finden und beim Anlegen einen Bezeichnungs-Vorschlag aus den gewählten Merkmalen erhalten, damit ich weniger tippen muss und Bezeichnungen einheitlich sind.
 - Als Nutzer, der einen Artikel bearbeitet, möchte ich vor gleichzeitigen Änderungen durch andere geschützt sein, damit meine Arbeit nicht überschrieben wird.
 
 ## Datenfelder
 
 **Kern/Identifikation:**
 - Artikeltyp (Pflicht*, Auswahl aus Merkmal-Tabelle: Rohstoff/Verpackung/Halbfertigware/Fertigware)
-- Artikelnummer Basisartikel (**Pflicht**, frei vergebbar)
+- Basisartikelnummer (**Pflicht**, freies Feld am Artikel, nur Ziffern, variable Länge, max. 10 Stellen; **keine** Verknüpfung zur Merkmal-Tabelle Basisartikel)
 - Artikelkennziffer (**Pflicht**, exakt 4-stellig)
-- Artikelnummer (automatisch zusammengesetzt: Basisartikel-Nr. + Kennziffer; Eindeutigkeit pro Mandant wird geprüft)
+- Artikelnummer (automatisch zusammengesetzt: Basisartikelnummer + „." + Kennziffer, z.B. `12345.0001`; Eindeutigkeit pro Mandant wird geprüft)
+- Matchcode (automatisch berechnet, nur Anzeige, durchsuchbar): Kürzel von Artikeltyp-Markeninhaber-Saison-Basisartikel-Form/Design-Packungsgröße-Geschmackssorte, getrennt durch Bindestrich; nicht gewählte Merkmale werden übersprungen
 - Warengruppe (automatisch berechnet: Saison-Ziffer (0–9) + Artikeltyp-Ziffer (0–9) + Platzhalter „0")
-- Artikelbezeichnung, Artikelbeschreibung (optional*)
+- Artikelbezeichnung (frei bearbeitbar; wird als Vorschlag aus den **Bezeichnungen** von Basisartikel, Form/Design, Packungsgröße, Geschmackssorte vorbelegt, solange sie leer oder noch nicht manuell geändert wurde), Artikelbeschreibung (optional*)
 
 **Klassifizierung (optional*, Auswahl aus Merkmal-Tabellen mit Link zur Pflege-Maske):**
-Markeninhaber, Saison, Basisartikel-Kategorie, Form/Design, Packungsgröße, Geschmackssorte
+Markeninhaber, Saison, Basisartikel (Merkmal, liefert Kürzel für Matchcode und Zolltarifnummer), Form/Design, Packungsgröße, Geschmackssorte
 
 **Zertifizierungen (optional*, bool):** Fairtrade, Rainforest, FSC
 
-**Verpackung & Logistik (optional*):** Palettenklasse, Mischartikel (bool), Anzahl Mischartikel, GTIN Hauptartikel, GTIN Mischartikel 1/2, Karton-EAN, Kartoninhalt, Breite, Länge, Höhe, Gewicht, Tara, Bruttogewicht (automatisch = Gewicht+Tara), Palettenfaktor, Verpackungsgruppe (Auswahl aus Merkmal-Tabelle)
+**Verpackung & Logistik (optional*):** Palettenklasse (Auswahl aus Merkmal-Tabelle), Mischartikel (bool), Anzahl Mischartikel, GTIN Hauptartikel, GTIN Mischartikel 1/2, Karton-EAN, Kartoninhalt, Breite, Länge, Höhe, Gewicht, Tara, Bruttogewicht (automatisch = Gewicht+Tara), Palettenfaktor, Verpackungsgruppe (Auswahl aus Merkmal-Tabelle)
 
 **Steuern & Zoll (optional*):** Mehrwertsteuersatz (Auswahl aus Merkmal-Tabelle), Zolltarifnummer
 
@@ -38,18 +42,21 @@ Markeninhaber, Saison, Basisartikel-Kategorie, Form/Design, Packungsgröße, Ges
 
 *_Für MVP sind nur Artikelnummer Basisartikel + Artikelkennziffer Pflicht; feingranulare Pflichtfeld-Konfiguration je Artikeltyp folgt in PROJ-12._
 
-**Merkmal-Tabellen (je eine eigene Maske mit eigenen Rechten):**
+**Merkmal-Tabellen (je eine eigene Maske mit eigenen Rechten, 10 Stück):**
 1. Artikeltyp — Kürzel, Bezeichnung, Warengruppen-Ziffer (0–9)
-2. Markeninhaber — Kürzel, Bezeichnung
+2. Markeninhaber — Kürzel, Bezeichnung (spätere Umstellung auf Adresse: siehe Open Questions / PROJ-4)
 3. Saison — Kürzel, Bezeichnung, Warengruppen-Ziffer (0–9)
-4. Basisartikel — Kürzel/Nummer, Bezeichnung, Zolltarifnummer
+4. Basisartikel — Kürzel (für Matchcode), Bezeichnung, Zolltarifnummer
 5. Form/Design — Kürzel, Bezeichnung
 6. Packungsgröße — Kürzel, Bezeichnung
 7. Geschmackssorte — Kürzel, Bezeichnung
-8. Mehrwertsteuersatz — Satz (%), Bezeichnung
-9. Verpackungsgruppe — Bezeichnung, Folien-/Pappengewicht (für DSD-Abrechnung)
+8. Palettenklasse — nur Klasse (Kürzel, z.B. „A"; vom Nutzer selbst angelegt, keine Bezeichnung, keine weiteren Felder)
+9. Mehrwertsteuersatz — Satz (%), Bezeichnung
+10. Verpackungsgruppe — Bezeichnung, 4 Gewichtsfelder in g (für DSD-Abrechnung): Folie Systembeteiligung, Pappe Systembeteiligung, Folie Transport, Pappe Transport
 
 Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit der jeweiligen Pflege-Maske verlinkt.
+
+**Artikelmaske (Layout):** Die Abschnitte sind Reiter (Karteikarten) nebeneinander, nur der gewählte Reiter ist sichtbar: Kern & Identifikation (Standard) | Klassifizierung | Zertifizierungen | Verpackung & Logistik | Steuern & Zoll. Kopfzeile (Artikelnummer, Matchcode, Status, Aktionen) bleibt über allen Reitern sichtbar; ein Formular, ein Speichern; Reiter mit Validierungsfehlern werden markiert.
 
 ## Out of Scope
 - Stücklisten/Rezepturen (Produktions- und Verkaufs-Stückliste) — PROJ-11
@@ -59,12 +66,19 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 - Lagerbestände/Mengen — PROJ-5
 - Hard-Delete von Artikeln (nur Deaktivieren)
 - Mandantenübergreifende Stammdaten
+- Verknüpfung Markeninhaber ↔ Adresse/Kundenstamm — erst mit PROJ-4 (Feld zeigt dann direkt auf die Adresse, Kürzel wird dort gepflegt)
 
 ## Acceptance Criteria
 
 **Format:** Angenommen [Vorbedingung] / Wenn [Aktion] / Dann [Ergebnis]
 
-- [ ] Angenommen ein Nutzer mit Schreibrecht ist eingeloggt, wenn er einen neuen Artikel mit gültiger Artikelnummer Basisartikel und 4-stelliger Kennziffer anlegt, dann wird der Artikel gespeichert und die Artikelnummer automatisch zusammengesetzt
+- [ ] Angenommen ein Nutzer mit Schreibrecht ist eingeloggt, wenn er einen neuen Artikel mit gültiger Basisartikelnummer (nur Ziffern, max. 10) und 4-stelliger Kennziffer anlegt, dann wird der Artikel gespeichert und die Artikelnummer automatisch als „Basisartikelnummer.Kennziffer" (z.B. 12345.0001) zusammengesetzt
+- [ ] Angenommen eine Basisartikelnummer enthält Buchstaben, ist leer oder länger als 10 Stellen, wenn der Nutzer speichern möchte, dann wird eine Validierungsfehlermeldung angezeigt und nicht gespeichert
+- [ ] Angenommen ein Nutzer wählt Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße und Geschmackssorte, wenn er speichert, dann wird der Matchcode aus deren Kürzeln mit Bindestrich zusammengesetzt (fehlende Merkmale übersprungen) und ist in der Artikelliste durchsuchbar
+- [ ] Angenommen die Bezeichnung ist leer oder wurde nicht manuell geändert, wenn der Nutzer Basisartikel, Form/Design, Packungsgröße oder Geschmackssorte wählt, dann wird die Bezeichnung aus deren Bezeichnungen vorgeschlagen; eine manuell geänderte Bezeichnung wird nie überschrieben
+- [ ] Angenommen ein Administrator hat Palettenklassen (z.B. A–D) in der Merkmal-Tabelle angelegt, wenn ein Nutzer am Artikel die Palettenklasse wählt, dann steht nur diese Auswahl zur Verfügung (kein Freitext)
+- [ ] Angenommen ein Nutzer pflegt eine Verpackungsgruppe, wenn er sie speichert, dann kann er Folie und Pappe jeweils für Systembeteiligung und Transport (4 Gewichtsfelder in g) erfassen
+- [ ] Angenommen ein Nutzer öffnet die Artikelmaske, wenn die Maske geladen ist, dann sieht er die Bereiche als Reiter nebeneinander und nur den gewählten Reiter; Kopfzeile bleibt sichtbar; ein Reiter mit Validierungsfehler ist markiert
 - [ ] Angenommen eine Artikelnummer existiert bereits im Mandanten, wenn ein Nutzer dieselbe Kombination erneut speichern möchte, dann wird das Speichern abgelehnt mit Fehlermeldung „Artikelnummer bereits vergeben"
 - [ ] Angenommen eine Artikelkennziffer ist nicht genau 4-stellig, wenn der Nutzer das Formular abschickt, dann wird eine Validierungsfehlermeldung angezeigt und nicht gespeichert
 - [ ] Angenommen ein Nutzer mit der Rolle Lager hat nur Leserechte, wenn er einen Artikel bearbeiten möchte, dann wird ihm keine Bearbeitungsoption angeboten
@@ -93,7 +107,8 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 
 ## Open Questions
 - [ ] Soll Mischartikel künftig über eine stücklistenähnliche Verknüpfung zu anderen Artikeln (PROJ-11) abgebildet werden statt über feste Mehrfach-GTIN-Felder? (Nutzer wollte nach Bedenkzeit entscheiden)
-- [x] ~~Ist „Artikelnummer Basisartikel" identisch mit dem Kürzel aus der Basisartikel-Merkmaltabelle oder ein unabhängiges Freitextfeld?~~ → Entschieden in `/architecture` (2026-10-04): Auswahl aus der Basisartikel-Merkmaltabelle
+- [ ] Markeninhaber mit Kundenstamm/Adresse verknüpfen → bewusst verschoben: Mit PROJ-4 zeigt das Feld Markeninhaber direkt auf die Adresse, das Kürzel wird dort gepflegt (2026-10-07). Bei `/write-spec` für PROJ-4 berücksichtigen.
+- [x] ~~Ist „Artikelnummer Basisartikel" identisch mit dem Kürzel aus der Basisartikel-Merkmaltabelle oder ein unabhängiges Freitextfeld?~~ → 2026-10-04 Auswahl aus Merkmaltabelle; **revidiert 2026-10-07**: unabhängiges Zifferfeld am Artikel, Merkmal-Tabelle liefert nur Kürzel für den Matchcode
 - [x] ~~Warengruppe: Ziffer bei fehlender Saison/Artikeltyp?~~ → „0" als Ersatzziffer (2026-10-04)
 - [x] ~~Standard-Artikeltypen bei neuem Mandanten automatisch vorbefüllen?~~ → Nein, Merkmal-Tabellen starten leer (2026-10-04)
 - [x] ~~Merkmal-Einträge löschbar?~~ → Nein, nur Deaktivieren (2026-10-04)
@@ -115,6 +130,15 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 | Keine Preis-/Lieferantenfelder im Artikelstamm | Gehören konzeptionell zu PROJ-4/PROJ-6/PROJ-7, nicht zu reinen Stammdaten | 2026-10-04 |
 | Bearbeitungssperre als generischer, wiederverwendbarer Mechanismus konzipiert | Soll später auch für Aufträge & Co. gelten | 2026-10-04 |
 | Standard-Rechte-Vorschlag: Admin voll, Einkauf/Verkauf anlegen/bearbeiten, Lager/Produktion lesend | Sinnvoller Default, über PROJ-2 jederzeit anpassbar | 2026-10-04 |
+| Basisartikelnummer ist ein eigenes Zifferfeld am Artikel (nur Ziffern, max. 10, variable Länge), nicht mehr Auswahl aus der Merkmal-Tabelle; Artikelnummer = Basisartikelnummer + „." + Kennziffer | Test zeigte: Basisartikel-Kürzel (Matchcode) und Basisartikelnummer sind fachlich unabhängig | 2026-10-07 |
+| Matchcode automatisch aus Kürzeln: Artikeltyp-Markeninhaber-Saison-Basisartikel-Form/Design-Packungsgröße-Geschmackssorte, Bindestrich, fehlende übersprungen; nur Anzeige, durchsuchbar | Nutzervorgabe; einheitliche Suche/Identifikation | 2026-10-07 |
+| Merkmal-Tabelle Basisartikel: „Nummer" wird zu „Kürzel" (Matchcode); Zolltarif-Vorbelegung bleibt | Folge der Entkopplung von der Basisartikelnummer | 2026-10-07 |
+| Artikelbezeichnung wird als Vorschlag aus Bezeichnungen von Basisartikel, Form/Design, Packungsgröße, Geschmackssorte vorbelegt, bleibt frei editierbar und wird nach manueller Änderung nie überschrieben | Weniger Tippen, einheitliche Namen, aber Verkaufsnamen dürfen abweichen | 2026-10-07 |
+| Palettenklasse wird Merkmal-Tabelle Nr. 10 (nur Klasse/Kürzel, vom Nutzer angelegt, eigene Maske + Rechte, startet leer) | Auswahl statt Freitext; Nutzerwunsch | 2026-10-07 |
+| Verpackungsgruppe: 4 Gewichtsfelder (Folie/Pappe je Systembeteiligung und Transport) statt einem | Nutzervorgabe für DSD-Abrechnung | 2026-10-07 |
+| Artikelmaske: Abschnitte als Reiter (Karteikarten), nur gewählter Reiter sichtbar; Kopfzeile fix; ein Formular, Fehler-Markierung am Reiter | Übersichtlichkeit bei vielen Feldern | 2026-10-07 |
+| Markeninhaber-Verknüpfung zu Adressen erst mit PROJ-4, Markeninhaber bleibt jetzt unverändert | Kundenstamm existiert noch nicht; später zeigt das Feld direkt auf die Adresse | 2026-10-07 |
+| Bestehende Testdaten dürfen bei der Umstellung bereinigt werden, keine aufwendige Datenmigration | Nutzerentscheidung: nur Testdaten vorhanden | 2026-10-07 |
 
 ### Technical Decisions
 <!-- Added by /architecture -->
@@ -477,3 +501,15 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 - Fehler-Tracking (`docs/production/error-tracking.md`) und Security-Header (`docs/production/security-headers.md`) sind weiterhin nicht eingerichtet (bestehende Schuld seit PROJ-1, nicht durch PROJ-3 entstanden)
 - Offene Low-Bugs aus der QA: BUG-2 (Sperrfehler unter dem Kennziffer-Feld), BUG-3 (Freigabe/Verlängerung-Rennen), BUG-4 (Sperre für nicht existierende Datensätze, kein Rate-Limit), BUG-5 (768-px-Überlauf)
 - Nicht auf das GitHub-Remote gepusht (siehe unten)
+
+## Refinement 2026-10-07 (Änderungen nach Nutzertest)
+
+**Status:** Spec angepasst, Umsetzung offen. Nächste Schritte: `/architecture` (Delta), dann `/backend`, `/frontend`, `/qa`.
+
+### Auswirkungen auf Umsetzung (Delta zu Tech Design / Implementation)
+- **Datenmodell `articles`:** neues Feld `base_article_number` (Ziffern, max. 10, Pflicht); Verweis `base_article_id` bleibt als Klassifizierung (optional); `article_number` = `base_article_number || '.' || kennziffer`; neues berechnetes Feld `match_code` (+ Trigram-Index für Suche); `pallet_class` wird Verweis auf neue Tabelle.
+- **Berechnung im Trigger:** Matchcode aus Kürzeln der 7 Merkmale; Folge-Trigger müssen bei Änderung eines Kürzels (Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte) Matchcodes neu berechnen. Artikelnummer-Neuberechnung bei Änderung der Basisartikel-Merkmalnummer entfällt.
+- **Merkmal-Tabellen:** `base_articles`: „Nummer" → „Kürzel"; neue Tabelle `pallet_classes` (nur `code`); `packaging_groups`: 4 Gewichtsfelder statt einem; Masken-Register +1 (11 Masken: Artikelstamm + 10 Merkmale), Rechte-Default analog.
+- **Frontend:** Reiter-Layout (tabs-Komponente) mit Fehlermarkierung; Matchcode-Anzeige in Kopfzeile/Kern; Bezeichnungs-Vorschlag mit „manuell geändert"-Merker; Basisartikelnummer-Feld mit Live-Vorschau `12345.0001`; Palettenklasse als Auswahlfeld; Artikelliste durchsucht zusätzlich den Matchcode.
+- **Tests:** bestehende Unit-/E2E-Tests zu Artikelnummer, Basisartikel und Verpackungsgruppe müssen angepasst werden; Testdaten dürfen bereinigt werden.
+- **Offene Low-Bugs aus QA (BUG-2 bis BUG-5)** können beim selben Durchgang mit erledigt werden.
