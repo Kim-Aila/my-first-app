@@ -69,7 +69,7 @@ export function ArticleFilters({ articleTypes }: ArticleFiltersProps) {
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Artikelnummer oder Bezeichnung"
+            placeholder="Artikelnummer, Matchcode oder Bezeichnung"
             className="bg-card pl-9"
             autoComplete="off"
           />

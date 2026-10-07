@@ -8,6 +8,7 @@ import {
   computeGrossWeight,
   computeMatchCode,
   rowToArticle,
+  suggestArticleName,
   toArticlePayload,
 } from "./articles"
 
@@ -41,6 +42,22 @@ describe("computeMatchCode", () => {
   it("skips missing Merkmale", () => {
     expect(computeMatchCode(["FW", null, "SOM", undefined, "", "  ", "VM"])).toBe("FW-SOM-VM")
     expect(computeMatchCode([])).toBe("")
+  })
+})
+
+describe("suggestArticleName", () => {
+  it("joins the names with spaces and skips missing ones", () => {
+    expect(suggestArticleName(["Tafelschokolade", "Hase", "100 g", "Vollmilch"])).toBe(
+      "Tafelschokolade Hase 100 g Vollmilch"
+    )
+    expect(suggestArticleName(["Tafelschokolade", null, " ", "Vollmilch"])).toBe(
+      "Tafelschokolade Vollmilch"
+    )
+    expect(suggestArticleName([])).toBe("")
+  })
+
+  it("never exceeds the 200 character limit of the article name", () => {
+    expect(suggestArticleName(["x".repeat(150), "y".repeat(150)])).toHaveLength(200)
   })
 })
 

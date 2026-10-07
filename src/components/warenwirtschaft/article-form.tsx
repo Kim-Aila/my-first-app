@@ -3,17 +3,11 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useForm } from "react-hook-form"
+import { useForm, type FieldErrors } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { ArrowLeft, Pencil, Power } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,6 +21,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EditLockBanner } from "@/components/edit-lock/edit-lock-banner"
 import { PageHeader } from "@/components/page-header"
 import { StatusBadge } from "@/components/status-badge"
@@ -48,8 +43,9 @@ import {
   articleFormSchema,
   computeArticleNumber,
   computeCommodityGroup,
-  computeMatchCode,
   computeGrossWeight,
+  computeMatchCode,
+  suggestArticleName,
   toArticlePayload,
   type Article,
   type ArticleFormValues,
@@ -58,7 +54,55 @@ import { formatDecimal } from "@/lib/decimal"
 import type { LockHolder } from "@/lib/edit-lock"
 import { getMerkmalByArticleKey } from "@/lib/merkmale"
 
-const SECTION_IDS = ["kern", "klassifizierung", "zertifizierungen", "logistik", "steuern"] as const
+// Reiter der Artikelmaske; `fields` ordnet jedes Formularfeld seinem Reiter zu (Fehlermarkierung).
+const TABS = [
+  {
+    id: "kern",
+    title: "Kern & Identifikation",
+    fields: ["articleTypeId", "baseArticleNumber", "kennziffer", "name", "description"],
+  },
+  {
+    id: "klassifizierung",
+    title: "Klassifizierung",
+    fields: ["brandOwnerId", "seasonId", "baseArticleId", "formDesignId", "packSizeId", "flavorId"],
+  },
+  { id: "zertifizierungen", title: "Zertifizierungen", fields: ["fairtrade", "rainforest", "fsc"] },
+  {
+    id: "logistik",
+    title: "Verpackung & Logistik",
+    fields: [
+      "palletClassId",
+      "isMixed",
+      "mixedCount",
+      "gtinMain",
+      "gtinMixed1",
+      "gtinMixed2",
+      "cartonEan",
+      "cartonContent",
+      "width",
+      "length",
+      "height",
+      "weight",
+      "tara",
+      "palletFactor",
+      "packagingGroupId",
+    ],
+  },
+  { id: "steuern", title: "Steuern & Zoll", fields: ["vatRateId", "customsTariffNumber"] },
+] as const
+
+type TabId = (typeof TABS)[number]["id"]
+
+/** Reiter, in denen mindestens ein Feld einen Fehler hat (in Reiter-Reihenfolge). */
+function tabsWithErrors(errors: FieldErrors<ArticleFormValues>): TabId[] {
+  return TABS.filter((tab) =>
+    (tab.fields as readonly string[]).some((field) => field in errors)
+  ).map((tab) => tab.id)
+}
+
+function tabOfField(field: string): TabId | undefined {
+  return TABS.find((tab) => (tab.fields as readonly string[]).includes(field))?.id
+}
 
 interface ArticleFormProps {
   tenantId: string
@@ -96,7 +140,7 @@ export function ArticleForm({
   const [isEditing, setIsEditing] = React.useState(isNew)
   const [saving, setSaving] = React.useState(false)
   const [formError, setFormError] = React.useState<string | null>(null)
-  const [openSections, setOpenSections] = React.useState<string[]>([...SECTION_IDS])
+  const [activeTab, setActiveTab] = React.useState<TabId>("kern")
   const [discardOpen, setDiscardOpen] = React.useState(false)
   const [statusOpen, setStatusOpen] = React.useState(false)
   const [statusBusy, setStatusBusy] = React.useState(false)
@@ -112,7 +156,8 @@ export function ArticleForm({
     resolver: zodResolver(articleFormSchema),
     defaultValues: initialValues,
   })
-  const { isDirty } = form.formState
+  const { isDirty, errors } = form.formState
+  const errorTabs = tabsWithErrors(errors)
 
   const lockLost = lock.status === "lost"
   const fieldsDisabled = !isEditing || lockLost || saving
@@ -146,6 +191,28 @@ export function ArticleForm({
   )
   const grossWeight = computeGrossWeight(watched.weight, watched.tara)
 
+  // Bezeichnungs-Vorschlag: füllt die Bezeichnung, solange sie leer ist oder noch dem zuletzt
+  // vorgeschlagenen Text entspricht. Eine manuell geänderte Bezeichnung wird nie überschrieben;
+  // bestehende Bezeichnungen gelten als manuell. Es reagiert nur auf geänderte Merkmale, nicht
+  // schon auf das Öffnen des Bearbeitungsmodus.
+  const nameOf = (item: typeof baseItem) =>
+    typeof item?.values.name === "string" ? item.values.name : null
+  const suggestedName = suggestArticleName([
+    nameOf(baseItem),
+    nameOf(references.formDesignId?.find((i) => i.id === watched.formDesignId)),
+    nameOf(references.packSizeId?.find((i) => i.id === watched.packSizeId)),
+    nameOf(references.flavorId?.find((i) => i.id === watched.flavorId)),
+  ])
+  const lastSuggestion = React.useRef<string>(suggestedName)
+  React.useEffect(() => {
+    if (!isEditing || suggestedName === lastSuggestion.current) return
+    const current = form.getValues("name")
+    if (current === "" || current === lastSuggestion.current) {
+      form.setValue("name", suggestedName, { shouldDirty: true })
+    }
+    lastSuggestion.current = suggestedName
+  }, [form, isEditing, suggestedName])
+
   // Neue Einträge in der Pflege-Maske (anderer Tab) sollen nach Rückkehr auswählbar sein;
   // `router.refresh()` lädt die Serverdaten neu, ohne den Formularzustand zu verlieren.
   React.useEffect(() => {
@@ -176,8 +243,10 @@ export function ArticleForm({
           const duplicate = result.status === 409 && (!result.field || result.field === "articleNumber")
           if (duplicate && !/gesperrt|bearbeitet/i.test(result.error)) {
             form.setError("kennziffer", { message: result.error })
+            setActiveTab("kern")
           } else if (result.field && result.field in values) {
             form.setError(result.field as keyof ArticleFormValues, { message: result.error })
+            setActiveTab(tabOfField(result.field) ?? "kern")
           } else {
             setFormError(result.error)
           }
@@ -206,9 +275,10 @@ export function ArticleForm({
     [article, form, lock, router, tenantId]
   )
 
-  function onInvalid() {
-    // Fehler in eingeklappten Abschnitten sichtbar machen.
-    setOpenSections([...SECTION_IDS])
+  function onInvalid(fieldErrors: FieldErrors<ArticleFormValues>) {
+    // Zum ersten Reiter mit Fehler springen, damit der Fehler sichtbar wird.
+    const [firstTab] = tabsWithErrors(fieldErrors)
+    if (firstTab) setActiveTab(firstTab)
   }
 
   const onSubmit = form.handleSubmit((values) => submit(values, { navigate: true }), onInvalid)
@@ -349,7 +419,9 @@ export function ArticleForm({
         description={
           isNew
             ? "Pflichtfelder sind Basisartikelnummer und Artikelkennziffer."
-            : article.values.name || "Ohne Bezeichnung"
+            : [article.matchCode, article.values.name || "Ohne Bezeichnung"]
+                .filter(Boolean)
+                .join(" · ")
         }
         actions={
           <>
@@ -417,16 +489,34 @@ export function ArticleForm({
 
         <Form {...form}>
           <form onSubmit={onSubmit} noValidate className="space-y-4">
-            <Accordion
-              type="multiple"
-              value={openSections}
-              onValueChange={setOpenSections}
-              className="space-y-4"
-            >
-              <Section id="kern" title="Kern & Identifikation">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabId)}>
+              <TabsList className="mb-2 h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
+                {TABS.map((tab) => {
+                  const hasError = errorTabs.includes(tab.id)
+                  return (
+                    <TabsTrigger
+                      key={tab.id}
+                      value={tab.id}
+                      className="border border-transparent data-[state=active]:border-border data-[state=active]:bg-card"
+                    >
+                      {tab.title}
+                      {hasError && (
+                        <>
+                          <span
+                            aria-hidden="true"
+                            className="ml-2 h-2 w-2 rounded-full bg-destructive"
+                          />
+                          <span className="sr-only"> (enthält Fehler)</span>
+                        </>
+                      )}
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
+
+              <Section id="kern">
                 <div className="grid gap-4 md:grid-cols-2">
                   {renderReference("articleTypeId")}
-                  {renderReference("baseArticleId", { onPick: prefillCustomsTariff })}
                   <TextField
                     control={c}
                     name="baseArticleNumber"
@@ -458,7 +548,7 @@ export function ArticleForm({
                   <ComputedField
                     id="article-match-code"
                     label="Matchcode"
-                    value={matchCode}
+                    value={matchCode || null}
                     hint="Kürzel der gewählten Merkmale, mit Bindestrich verbunden."
                   />
                   <ComputedField
@@ -474,6 +564,7 @@ export function ArticleForm({
                       label="Artikelbezeichnung"
                       disabled={fieldsDisabled}
                       maxLength={200}
+                      hint="Wird aus Basisartikel, Form/Design, Packungsgröße und Geschmackssorte vorgeschlagen und bleibt frei änderbar."
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -488,17 +579,18 @@ export function ArticleForm({
                 </div>
               </Section>
 
-              <Section id="klassifizierung" title="Klassifizierung">
+              <Section id="klassifizierung">
                 <div className="grid gap-4 md:grid-cols-2">
                   {renderReference("brandOwnerId")}
                   {renderReference("seasonId")}
+                  {renderReference("baseArticleId", { onPick: prefillCustomsTariff })}
                   {renderReference("formDesignId")}
                   {renderReference("packSizeId")}
                   {renderReference("flavorId")}
                 </div>
               </Section>
 
-              <Section id="zertifizierungen" title="Zertifizierungen">
+              <Section id="zertifizierungen">
                 <div className="grid gap-3 sm:grid-cols-3">
                   <CheckField control={c} name="fairtrade" label="Fairtrade" disabled={fieldsDisabled} />
                   <CheckField control={c} name="rainforest" label="Rainforest" disabled={fieldsDisabled} />
@@ -506,7 +598,7 @@ export function ArticleForm({
                 </div>
               </Section>
 
-              <Section id="logistik" title="Verpackung & Logistik">
+              <Section id="logistik">
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {renderReference("palletClassId")}
                   <TextField
@@ -559,7 +651,7 @@ export function ArticleForm({
                 </div>
               </Section>
 
-              <Section id="steuern" title="Steuern & Zoll">
+              <Section id="steuern">
                 <div className="grid gap-4 md:grid-cols-2">
                   {renderReference("vatRateId")}
                   <TextField
@@ -572,7 +664,7 @@ export function ArticleForm({
                   />
                 </div>
               </Section>
-            </Accordion>
+            </Tabs>
           </form>
         </Form>
       </div>
@@ -629,21 +721,17 @@ export function ArticleForm({
   )
 }
 
-function Section({
-  id,
-  title,
-  children,
-}: {
-  id: string
-  title: string
-  children: React.ReactNode
-}) {
+function Section({ id, children }: { id: TabId; children: React.ReactNode }) {
+  // forceMount: alle Reiter bleiben im Formular, damit Eingaben und Prüfung über alle Reiter gelten;
+  // der inaktive Reiter wird per `data-[state=inactive]:hidden` ausgeblendet
+  // (Radix setzt bei forceMount kein `hidden`).
   return (
-    <AccordionItem value={id} className="rounded-[18px] border bg-card px-6">
-      <AccordionTrigger className="font-display text-lg font-medium hover:no-underline">
-        {title}
-      </AccordionTrigger>
-      <AccordionContent className="pb-6">{children}</AccordionContent>
-    </AccordionItem>
+    <TabsContent
+      value={id}
+      forceMount
+      className="rounded-[18px] border bg-card p-6 data-[state=inactive]:hidden"
+    >
+      {children}
+    </TabsContent>
   )
 }

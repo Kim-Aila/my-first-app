@@ -94,7 +94,7 @@ async function mkArticle(
     const k = kennziffer ?? String(1000 + Math.floor(Math.random() * 9000))
     const { data, error } = await admin
       .from("articles")
-      .insert({ tenant_id: tenant, base_article_id: base, kennziffer: k, ...extra })
+      .insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, base_article_id: base, kennziffer: k, ...extra })
       .select("id, article_number, kennziffer")
       .single()
     if (!error) {
@@ -113,7 +113,7 @@ async function randomFreeKennziffer(tenant: string, base: string) {
       .from("articles")
       .select("id")
       .eq("tenant_id", tenant)
-      .eq("base_article_id", base)
+      .eq("base_article_number", P3_BASE_CODE)
       .eq("kennziffer", k)
     if (!data || data.length === 0) return k
   }
@@ -143,6 +143,11 @@ async function otherSession(browser: Browser, testInfo: TestInfo, username: stri
   const page = await context.newPage()
   await login(page, username)
   return { context, page }
+}
+
+/** Opens a tab (Reiter) of the article form; all tabs stay mounted but only the selected one is visible. */
+async function openTab(page: Page, name: string) {
+  await page.getByRole("tab", { name }).click()
 }
 
 // Locates a Merkmal select via its visible label (the "Known bugs" test below asserts that the
@@ -222,25 +227,25 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
 
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
-    await pick(page, "Basisartikel", /1200/)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
     await page.getByLabel("Artikelkennziffer").fill(kennziffer)
     await page.getByLabel("Artikelbezeichnung").fill("E2E Vollmilch")
     // live preview before saving
-    await expect(page.getByLabel("Artikelnummer", { exact: true })).toHaveText(`${P3_BASE_CODE}${kennziffer}`)
+    await expect(page.getByLabel("Artikelnummer", { exact: true })).toHaveText(`${P3_BASE_CODE}.${kennziffer}`)
 
     await page.getByRole("button", { name: "Speichern" }).click()
     await expect(page).toHaveURL(new RegExp(`/artikelstamm/[0-9a-f-]{36}\\?mandant=${tenant}`))
-    await expect(page.getByRole("heading", { name: `${P3_BASE_CODE}${kennziffer}` })).toBeVisible()
+    await expect(page.getByRole("heading", { name: `${P3_BASE_CODE}.${kennziffer}` })).toBeVisible()
 
     const { data } = await admin
       .from("articles")
       .select("id, article_number, name, is_active, commodity_group")
       .eq("tenant_id", tenant)
       .eq("kennziffer", kennziffer)
-      .eq("base_article_id", base)
+      .eq("base_article_number", P3_BASE_CODE)
       .single()
     createdArticles.push(data!.id)
-    expect(data).toMatchObject({ article_number: `${P3_BASE_CODE}${kennziffer}`, name: "E2E Vollmilch", is_active: true })
+    expect(data).toMatchObject({ article_number: `${P3_BASE_CODE}.${kennziffer}`, name: "E2E Vollmilch", is_active: true })
     expect(data!.commodity_group).toBe("000")
   })
 
@@ -251,7 +256,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
 
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
-    await pick(page, "Basisartikel", /1200/)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
     await page.getByLabel("Artikelkennziffer").fill(existing.kennziffer)
     await page.getByRole("button", { name: "Speichern" }).click()
 
@@ -271,7 +276,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
 
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
-    await pick(page, "Basisartikel", /1200/)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
     await page.getByLabel("Artikelbezeichnung").fill(marker)
     for (const value of ["", "123", "12a4"]) {
       await page.getByLabel("Artikelkennziffer").fill(value)
@@ -285,7 +290,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     await page.reload()
     await page.getByLabel("Artikelkennziffer").fill("0001")
     await page.getByRole("button", { name: "Speichern" }).click()
-    await expect(page.getByText("Bitte einen Basisartikel wählen")).toBeVisible()
+    await expect(page.getByText("Die Basisartikelnummer muss aus 1 bis 10 Ziffern bestehen")).toBeVisible()
   })
 
   test("AC-4: a read-only user (Lager) is offered no edit option, no new-article button and cannot write via the API", async ({ page }) => {
@@ -309,7 +314,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
 
     // the same session cannot write directly either
     const base = await baseArticleId(tenant)
-    const post = await page.request.post(`/api/tenants/${tenant}/articles`, { data: { baseArticleId: base, kennziffer: "4321" } })
+    const post = await page.request.post(`/api/tenants/${tenant}/articles`, { data: { baseArticleNumber: P3_BASE_CODE, kennziffer: "4321" } })
     expect(post.status()).toBe(403)
     const patch = await page.request.patch(`/api/tenants/${tenant}/articles/${article.id}/status`, { data: { isActive: false } })
     expect(patch.status()).toBe(403)
@@ -341,7 +346,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
       // B cannot save by calling the API either — the error names A
       const base = await baseArticleId(tenant)
       const res = await b.page.request.patch(`/api/tenants/${tenant}/articles/${article.id}`, {
-        data: { baseArticleId: base, kennziffer: article.kennziffer, name: "Fremd" },
+        data: { baseArticleNumber: P3_BASE_CODE, kennziffer: article.kennziffer, name: "Fremd" },
       })
       expect(res.status()).toBe(409)
       expect((await res.json()).error).toContain(P3_EINKAUF)
@@ -485,6 +490,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     const tenant = await tenantId(P3_TENANT_LEER)
     await login(page, P3_LEER)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await openTab(page, "Klassifizierung")
     await combo(page, "Basisartikel").click()
     await expect(page.getByText("Noch keine Einträge")).toBeVisible()
     const link = page.getByRole("link", { name: /hier anlegen/ })
@@ -518,7 +524,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
 
     // API against the foreign tenant is forbidden, direct REST shows no foreign rows
     const res = await page.request.post(`/api/tenants/${foreign}/articles`, {
-      data: { baseArticleId: foreignBase!.id, kennziffer: "0001" },
+      data: { baseArticleNumber: P3_BASE_CODE, baseArticleId: foreignBase!.id, kennziffer: "0001" },
     })
     expect(res.status()).toBe(403)
     const client = await userClient(P3_EINKAUF)
@@ -533,6 +539,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
 
+    await openTab(page, "Klassifizierung")
     const link = page.getByRole("link", { name: /Basisartikel/ }).first()
     await expect(link).toHaveAttribute("href", `/merkmale/basisartikel?mandant=${tenant}`)
     const [popup] = await Promise.all([page.context().waitForEvent("page"), link.click()])
@@ -549,6 +556,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     await page.context().clearCookies()
     await login(page, username)
     await page.goto(`/artikelstamm/neu?mandant=${t}`)
+    await openTab(page, "Klassifizierung")
     await expect(page.getByRole("link", { name: /Basisartikel/ })).toHaveCount(0)
   })
 
@@ -560,15 +568,25 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
     await expect(page.getByLabel("Warengruppe", { exact: true })).toHaveText("000")
-    await pick(page, "Basisartikel", /1200/)
-    // base article carries a customs tariff number that is prefilled
-    await expect(page.getByLabel("Zolltarifnummer")).toHaveValue("18063210")
-    await pick(page, "Saison", /SOM/)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
     await pick(page, "Artikeltyp", /FW/)
+    await openTab(page, "Klassifizierung")
+    await pick(page, "Saison", /SOM/)
+    // the Basisartikel Merkmal carries a customs tariff number that is prefilled
+    await pick(page, "Basisartikel", /1200/)
+    await openTab(page, "Steuern & Zoll")
+    await expect(page.getByLabel("Zolltarifnummer")).toHaveValue("18063210")
+    await openTab(page, "Kern & Identifikation")
     await expect(page.getByLabel("Warengruppe", { exact: true })).toHaveText("340")
+    // Matchcode: Artikeltyp-Saison-Basisartikel
+    await expect(page.getByLabel("Matchcode", { exact: true })).toHaveText(/^FW-SOM-/)
+    // name suggestion from the Basisartikel name
+    await expect(page.getByLabel("Artikelbezeichnung")).toHaveValue("Tafelschokolade")
+    await openTab(page, "Verpackung & Logistik")
     await page.getByLabel(/^Gewicht/).fill("100,5")
     await page.getByLabel(/^Tara/).fill("10")
     await expect(page.getByLabel(/Bruttogewicht/)).toHaveText("110,5")
+    await openTab(page, "Kern & Identifikation")
     await page.getByLabel("Artikelkennziffer").fill(kennziffer)
     await page.getByRole("button", { name: "Speichern" }).click()
     await expect(page).toHaveURL(/\/artikelstamm\/[0-9a-f-]{36}/)
@@ -578,7 +596,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
       .select("id, commodity_group, gross_weight")
       .eq("tenant_id", tenant)
       .eq("kennziffer", kennziffer)
-      .eq("base_article_id", base)
+      .eq("base_article_number", P3_BASE_CODE)
       .single()
     createdArticles.push(data!.id)
     expect(data!.commodity_group).toBe("340")
@@ -589,6 +607,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     const tenant = await tenantId(P3_TENANT)
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await openTab(page, "Verpackung & Logistik")
     await expect(page.getByLabel("GTIN Mischartikel 1")).toHaveCount(0)
     await page.getByLabel("Mischartikel", { exact: true }).click()
     await expect(page.getByLabel("GTIN Mischartikel 1")).toBeVisible()
@@ -603,7 +622,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
 
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
-    await pick(page, "Basisartikel", /1200/)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
     await page.getByLabel("Artikelkennziffer").fill(kennziffer)
     await page.getByLabel("Artikelbezeichnung").fill("E2E Netzwerk")
 
@@ -617,7 +636,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     await page.unroute("**/api/tenants/*/articles")
     await page.getByRole("button", { name: "Speichern" }).click()
     await expect(page).toHaveURL(/\/artikelstamm\/[0-9a-f-]{36}/)
-    const { data } = await admin.from("articles").select("id").eq("tenant_id", tenant).eq("kennziffer", kennziffer).eq("base_article_id", base).single()
+    const { data } = await admin.from("articles").select("id").eq("tenant_id", tenant).eq("kennziffer", kennziffer).eq("base_article_number", P3_BASE_CODE).single()
     createdArticles.push(data!.id)
   })
 
@@ -701,6 +720,7 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
       .single()
     const rows = Array.from({ length: 27 }, (_, i) => ({
       tenant_id: tenant,
+      base_article_number: "9",
       base_article_id: base!.id,
       kennziffer: String(1000 + i),
       name: i === 0 ? `Besonders ${id}` : `Artikel ${i}`,
@@ -718,15 +738,15 @@ test.describe("PROJ-3: Warenwirtschaft – Artikelstamm", () => {
     // live search by name, then by number
     await page.goto(`/artikelstamm?mandant=${tenant}`)
     await page.getByLabel("Suche").fill(`Besonders ${id}`)
-    await expect(page.getByRole("link", { name: "91000" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "9.1000" })).toBeVisible()
     await expect(page.getByRole("row")).toHaveCount(2)
-    await page.getByLabel("Suche").fill("91001")
-    await expect(page.getByRole("link", { name: "91001" })).toBeVisible()
+    await page.getByLabel("Suche").fill("9.1001")
+    await expect(page.getByRole("link", { name: "9.1001" })).toBeVisible()
     await expect(page.getByRole("row")).toHaveCount(2)
 
     // type filter
     await page.goto(`/artikelstamm?mandant=${tenant}&typ=${type!.id}`)
-    await expect(page.getByRole("link", { name: "91001" })).toBeVisible()
+    await expect(page.getByRole("link", { name: "9.1001" })).toBeVisible()
     await expect(page.getByRole("row")).toHaveCount(2)
     await page.goto(`/artikelstamm?mandant=${tenant}&q=gibt-es-nicht`)
     await expect(page.getByText("Keine Artikel gefunden")).toBeVisible()
@@ -799,12 +819,14 @@ test.describe("PROJ-3: Merkmal-Tabellen", () => {
 
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await openTab(page, "Klassifizierung")
     await combo(page, "Saison").click()
     await expect(page.getByRole("option", { name: /SOM/ })).toBeVisible()
     await expect(page.getByRole("option", { name: new RegExp(code) })).toHaveCount(0)
     await page.keyboard.press("Escape")
 
     await page.goto(articleUrl(tenant, article.id))
+    await openTab(page, "Klassifizierung")
     await expect(combo(page, "Saison")).toContainText("(inaktiv)")
   })
 
@@ -852,6 +874,7 @@ test.describe("PROJ-3: Known bugs (see QA section in the spec)", () => {
     const tenant = await tenantId(P3_TENANT)
     await login(page, P3_EINKAUF)
     await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await openTab(page, "Klassifizierung")
     await expect(page.getByRole("combobox", { name: /Basisartikel/ })).toBeVisible({ timeout: 3000 })
     await expect(page.getByRole("combobox", { name: /Saison/ })).toBeVisible({ timeout: 3000 })
   })
@@ -931,8 +954,8 @@ test.describe("PROJ-3: Security", () => {
     const tenant = await tenantId(P3_TENANT)
     const id = "11111111-1111-4111-8111-111111111111"
     for (const [method, path, data] of [
-      ["post", `/api/tenants/${tenant}/articles`, { baseArticleId: id, kennziffer: "0001" }],
-      ["patch", `/api/tenants/${tenant}/articles/${id}`, { baseArticleId: id, kennziffer: "0001" }],
+      ["post", `/api/tenants/${tenant}/articles`, { baseArticleNumber: P3_BASE_CODE, kennziffer: "0001" }],
+      ["patch", `/api/tenants/${tenant}/articles/${id}`, { baseArticleNumber: P3_BASE_CODE, kennziffer: "0001" }],
       ["patch", `/api/tenants/${tenant}/articles/${id}/status`, { isActive: false }],
       ["post", `/api/tenants/${tenant}/merkmale/saisons`, { code: "X", name: "x", commodityDigit: 1 }],
       ["patch", `/api/tenants/${tenant}/merkmale/saisons/${id}`, { isActive: false }],
@@ -967,8 +990,8 @@ test.describe("PROJ-3: Security", () => {
 
     // writing without rights
     const k = await randomFreeKennziffer(tenant, base)
-    expect((await lager.from("articles").insert({ tenant_id: tenant, base_article_id: base, kennziffer: k })).error).not.toBeNull()
-    expect((await fremd.from("articles").insert({ tenant_id: tenant, base_article_id: base, kennziffer: k })).error).not.toBeNull()
+    expect((await lager.from("articles").insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, base_article_id: base, kennziffer: k })).error).not.toBeNull()
+    expect((await fremd.from("articles").insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, base_article_id: base, kennziffer: k })).error).not.toBeNull()
     expect((await lager.from("articles").update({ name: "Hack" }).eq("id", article.id).select("id")).data ?? []).toHaveLength(0)
     expect((await lager.from("seasons").insert({ tenant_id: tenant, code: "HACK", name: "x", commodity_digit: 1 })).error).not.toBeNull()
     expect((await lager.from("role_permissions").update({ access_level: "write" }).eq("access_level", "read").select("id")).data ?? []).toHaveLength(0)
@@ -1018,7 +1041,7 @@ test.describe("PROJ-3: Security", () => {
       .single()
     createdMerkmale.push({ table: "seasons", id: foreignSeason!.id })
     const k1 = await randomFreeKennziffer(tenant, base)
-    const res = await einkauf.from("articles").insert({ tenant_id: tenant, base_article_id: base, kennziffer: k1, season_id: foreignSeason!.id })
+    const res = await einkauf.from("articles").insert({ tenant_id: tenant, base_article_number: P3_BASE_CODE, base_article_id: base, kennziffer: k1, season_id: foreignSeason!.id })
     expect(res.error?.code).toBe("23503")
   })
 
@@ -1069,27 +1092,27 @@ test.describe("PROJ-3: Security", () => {
     await login(page, P3_EINKAUF)
     const post = (data: unknown) => page.request.post(`/api/tenants/${tenant}/articles`, { data })
 
-    expect((await post({ baseArticleId: base, kennziffer: 1234 })).status()).toBe(400)
-    expect((await post({ baseArticleId: base, kennziffer: "0001", weight: "heavy" })).status()).toBe(400)
-    expect((await post({ baseArticleId: base, kennziffer: "0001", name: "x".repeat(201) })).status()).toBe(400)
-    expect((await post({ baseArticleId: base, kennziffer: "0001", description: "x".repeat(2001) })).status()).toBe(400)
-    expect((await post({ baseArticleId: base, kennziffer: "0001", gtinMain: "1".repeat(15) })).status()).toBe(400)
-    expect((await post({ baseArticleId: base, kennziffer: "0001", seasonId: "not-a-uuid" })).status()).toBe(400)
+    expect((await post({ baseArticleNumber: P3_BASE_CODE, kennziffer: 1234 })).status()).toBe(400)
+    expect((await post({ baseArticleNumber: P3_BASE_CODE, kennziffer: "0001", weight: "heavy" })).status()).toBe(400)
+    expect((await post({ baseArticleNumber: P3_BASE_CODE, kennziffer: "0001", name: "x".repeat(201) })).status()).toBe(400)
+    expect((await post({ baseArticleNumber: P3_BASE_CODE, kennziffer: "0001", description: "x".repeat(2001) })).status()).toBe(400)
+    expect((await post({ baseArticleNumber: P3_BASE_CODE, kennziffer: "0001", gtinMain: "1".repeat(15) })).status()).toBe(400)
+    expect((await post({ baseArticleNumber: P3_BASE_CODE, kennziffer: "0001", seasonId: "not-a-uuid" })).status()).toBe(400)
     expect((await post("not json")).status()).toBe(400)
     const text = await page.request.post(`/api/tenants/${tenant}/articles`, { headers: { "Content-Type": "application/json" }, data: "{broken" })
     expect(text.status()).toBe(400)
-    const bad = await page.request.post(`/api/tenants/not-a-uuid/articles`, { data: { baseArticleId: base, kennziffer: "0001" } })
+    const bad = await page.request.post(`/api/tenants/not-a-uuid/articles`, { data: { baseArticleNumber: P3_BASE_CODE, kennziffer: "0001" } })
     expect(bad.status()).toBe(404)
 
     // mass assignment: tenant_id / created_by / computed fields in the body are ignored
     const kennziffer = await randomFreeKennziffer(tenant, base)
     const foreign = await tenantId(P3_TENANT_FREMD)
-    const res = await post({ baseArticleId: base, kennziffer, tenant_id: foreign, tenantId: foreign, articleNumber: "HACK", commodity_group: "999", is_active: false })
+    const res = await post({ baseArticleNumber: P3_BASE_CODE, kennziffer, tenant_id: foreign, tenantId: foreign, articleNumber: "HACK", commodity_group: "999", is_active: false })
     expect(res.status()).toBe(201)
     const created = await res.json()
     createdArticles.push(created.id)
     const { data } = await admin.from("articles").select("tenant_id, article_number, commodity_group, is_active").eq("id", created.id).single()
-    expect(data).toMatchObject({ tenant_id: tenant, article_number: `${P3_BASE_CODE}${kennziffer}`, commodity_group: "000", is_active: true })
+    expect(data).toMatchObject({ tenant_id: tenant, article_number: `${P3_BASE_CODE}.${kennziffer}`, commodity_group: "000", is_active: true })
 
     // Merkmal validation
     const m = (d: unknown) => page.request.post(`/api/tenants/${tenant}/merkmale/saisons`, { data: d })
@@ -1103,7 +1126,7 @@ test.describe("PROJ-3: Security", () => {
   test("responses leak no internals (database errors are generic) and set no secrets in the page", async ({ page }) => {
     const tenant = await tenantId(P3_TENANT)
     await login(page, P3_EINKAUF)
-    const res = await page.request.post(`/api/tenants/${tenant}/articles`, { data: { baseArticleId: "11111111-1111-4111-8111-111111111111", kennziffer: "0001" } })
+    const res = await page.request.post(`/api/tenants/${tenant}/articles`, { data: { baseArticleNumber: P3_BASE_CODE, baseArticleId: "11111111-1111-4111-8111-111111111111", kennziffer: "0001" } })
     const text = await res.text()
     expect(res.status()).toBe(400)
     expect(text).not.toMatch(/violates|constraint|pg_|postgres|stack|supabase|SELECT |INSERT /i)
@@ -1122,5 +1145,192 @@ test.describe("PROJ-3: Security", () => {
     expect(res.status()).toBe(403)
     const rel = await page.request.delete(`/api/tenants/${tenant}/locks?resourceType=article&resourceId=11111111-1111-4111-8111-111111111111`)
     expect(rel.status()).toBe(204) // idempotent no-op for non-existing locks
+  })
+})
+
+test.describe("PROJ-3 Refinement 2026-10-07: Reiter, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse", () => {
+  test("the article form shows its sections as tabs; only the selected tab is visible and the header stays", async ({ page }) => {
+    const tenant = await tenantId(P3_TENANT)
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+
+    const titles = ["Kern & Identifikation", "Klassifizierung", "Zertifizierungen", "Verpackung & Logistik", "Steuern & Zoll"]
+    for (const title of titles) await expect(page.getByRole("tab", { name: title })).toBeVisible()
+    await expect(page.getByRole("tab", { name: "Kern & Identifikation" })).toHaveAttribute("aria-selected", "true")
+
+    await expect(page.getByLabel("Basisartikelnummer")).toBeVisible()
+    await expect(page.getByLabel("Fairtrade")).toBeHidden()
+    await openTab(page, "Zertifizierungen")
+    await expect(page.getByLabel("Fairtrade")).toBeVisible()
+    await expect(page.getByLabel("Basisartikelnummer")).toBeHidden()
+    await expect(page.getByRole("heading", { name: "Neuer Artikel" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Speichern" })).toBeVisible()
+  })
+
+  test("a validation error marks its tab and jumps to it; nothing is saved", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const kennziffer = await randomFreeKennziffer(tenant, await baseArticleId(tenant))
+    const marker = `E2E Reiter ${uid(testInfo)}`
+
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
+    await page.getByLabel("Artikelkennziffer").fill(kennziffer)
+    await page.getByLabel("Artikelbezeichnung").fill(marker)
+    await openTab(page, "Verpackung & Logistik")
+    await page.getByLabel("GTIN Hauptartikel").fill("abc")
+    await page.getByRole("button", { name: "Speichern" }).click()
+
+    await expect(page.getByText("GTIN Hauptartikel: nur Ziffern, höchstens 14 Stellen")).toBeVisible()
+    await expect(page.getByRole("tab", { name: /Verpackung & Logistik.*enthält Fehler/ })).toBeVisible()
+    await expect(page.getByRole("tab", { name: /Kern & Identifikation.*enthält Fehler/ })).toHaveCount(0)
+
+    // error in a hidden tab: submitting from another tab jumps to the first tab with an error
+    await openTab(page, "Steuern & Zoll")
+    await page.getByRole("button", { name: "Speichern" }).click()
+    await expect(page.getByRole("tab", { name: /Verpackung & Logistik/ })).toHaveAttribute("aria-selected", "true")
+
+    const { count } = await admin.from("articles").select("id", { count: "exact", head: true }).eq("name", marker)
+    expect(count).toBe(0)
+  })
+
+  test("Matchcode: live preview from the Kürzel, stored by the server, shown in header and list, searchable", async ({ page }) => {
+    const tenant = await tenantId(P3_TENANT)
+    const kennziffer = await randomFreeKennziffer(tenant, await baseArticleId(tenant))
+
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await expect(page.getByLabel("Matchcode", { exact: true })).toHaveText("–")
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
+    await page.getByLabel("Artikelkennziffer").fill(kennziffer)
+    await expect(page.getByLabel("Artikelnummer", { exact: true })).toHaveText(`${P3_BASE_CODE}.${kennziffer}`)
+    await pick(page, "Artikeltyp", /FW/)
+    await openTab(page, "Klassifizierung")
+    await pick(page, "Saison", /SOM/)
+    await pick(page, "Basisartikel", /1200/)
+    await openTab(page, "Kern & Identifikation")
+    await expect(page.getByLabel("Matchcode", { exact: true })).toHaveText("FW-SOM-1200")
+
+    await page.getByRole("button", { name: "Speichern" }).click()
+    await expect(page).toHaveURL(/\/artikelstamm\/[0-9a-f-]{36}/)
+    await expect(page.getByText(/FW-SOM-1200 ·/)).toBeVisible()
+    const { data } = await admin
+      .from("articles")
+      .select("id, match_code, article_number")
+      .eq("tenant_id", tenant)
+      .eq("kennziffer", kennziffer)
+      .eq("base_article_number", P3_BASE_CODE)
+      .single()
+    createdArticles.push(data!.id)
+    expect(data).toMatchObject({ match_code: "FW-SOM-1200", article_number: `${P3_BASE_CODE}.${kennziffer}` })
+
+    await page.goto(`/artikelstamm?mandant=${tenant}&q=FW-SOM-1200`)
+    await expect(page.getByRole("link", { name: `${P3_BASE_CODE}.${kennziffer}` })).toBeVisible()
+  })
+
+  test("Bezeichnungs-Vorschlag: filled from the Merkmal names, a manually changed name is never overwritten", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const id = uid(testInfo)
+    const { data: form } = await admin
+      .from("form_designs")
+      .insert({ tenant_id: tenant, code: `F${id}`.slice(0, 20), name: `Hase${id}` })
+      .select("id")
+      .single()
+    createdMerkmale.push({ table: "form_designs", id: form!.id })
+    const { data: size } = await admin
+      .from("pack_sizes")
+      .insert({ tenant_id: tenant, code: `P${id}`.slice(0, 20), name: `Klein${id}` })
+      .select("id")
+      .single()
+    createdMerkmale.push({ table: "pack_sizes", id: size!.id })
+    const { data: size2 } = await admin
+      .from("pack_sizes")
+      .insert({ tenant_id: tenant, code: `G${id}`.slice(0, 20), name: `Gross${id}` })
+      .select("id")
+      .single()
+    createdMerkmale.push({ table: "pack_sizes", id: size2!.id })
+
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await openTab(page, "Klassifizierung")
+    await pick(page, "Basisartikel", /1200/)
+    await pick(page, "Form/Design", new RegExp(`Hase${id}`))
+    await openTab(page, "Kern & Identifikation")
+    await expect(page.getByLabel("Artikelbezeichnung")).toHaveValue(`Tafelschokolade Hase${id}`)
+
+    // still the suggestion → follows further changes
+    await openTab(page, "Klassifizierung")
+    await pick(page, "Packungsgröße", new RegExp(`Klein${id}`))
+    await openTab(page, "Kern & Identifikation")
+    await expect(page.getByLabel("Artikelbezeichnung")).toHaveValue(`Tafelschokolade Hase${id} Klein${id}`)
+
+    // manual change → never overwritten again
+    await page.getByLabel("Artikelbezeichnung").fill("Mein Verkaufsname")
+    await openTab(page, "Klassifizierung")
+    await pick(page, "Packungsgröße", new RegExp(`Gross${id}`))
+    await openTab(page, "Kern & Identifikation")
+    await expect(page.getByLabel("Artikelbezeichnung")).toHaveValue("Mein Verkaufsname")
+  })
+
+  test("Palettenklasse: chosen from the Merkmal table (no free text), stored as reference", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const kennziffer = await randomFreeKennziffer(tenant, await baseArticleId(tenant))
+    const code = `PK${uid(testInfo)}`.slice(0, 20)
+    const { data: klass } = await admin.from("pallet_classes").insert({ tenant_id: tenant, code }).select("id").single()
+    createdMerkmale.push({ table: "pallet_classes", id: klass!.id })
+
+    await login(page, P3_EINKAUF)
+    await page.goto(`/artikelstamm/neu?mandant=${tenant}`)
+    await page.getByLabel("Basisartikelnummer").fill(P3_BASE_CODE)
+    await page.getByLabel("Artikelkennziffer").fill(kennziffer)
+    await openTab(page, "Verpackung & Logistik")
+    await expect(page.getByRole("textbox", { name: "Palettenklasse" })).toHaveCount(0)
+    await pick(page, "Palettenklasse", code)
+    await page.getByRole("button", { name: "Speichern" }).click()
+    await expect(page).toHaveURL(/\/artikelstamm\/[0-9a-f-]{36}/)
+
+    const { data } = await admin
+      .from("articles")
+      .select("id, pallet_class_id")
+      .eq("tenant_id", tenant)
+      .eq("kennziffer", kennziffer)
+      .eq("base_article_number", P3_BASE_CODE)
+      .single()
+    createdArticles.push(data!.id)
+    expect(data!.pallet_class_id).toBe(klass!.id)
+
+    // maintenance mask: Einkauf has the Palettenklassen mask and sees the entry
+    await page.goto(`/merkmale/palettenklassen?mandant=${tenant}`)
+    await expect(page.getByRole("heading", { name: "Palettenklassen" })).toBeVisible()
+    await expect(page.getByText(code)).toBeVisible()
+  })
+
+  test("Verpackungsgruppe: the 4 weight fields are saved", async ({ page }, testInfo) => {
+    const tenant = await tenantId(P3_TENANT)
+    const name = `VG ${uid(testInfo)}`
+    await login(page, P3_EINKAUF)
+    await page.goto(`/merkmale/verpackungsgruppen?mandant=${tenant}`)
+    await page.getByRole("button", { name: "Neuer Eintrag" }).first().click()
+    await page.getByLabel("Bezeichnung").fill(name)
+    await page.getByLabel(/Folie Systembeteiligung/).fill("1,5")
+    await page.getByLabel(/Pappe Systembeteiligung/).fill("2")
+    await page.getByLabel(/Folie Transport/).fill("3")
+    await page.getByLabel(/Pappe Transport/).fill("4,25")
+    await page.getByRole("dialog").getByRole("button", { name: "Anlegen" }).click()
+    await expect(page.getByText(name)).toBeVisible()
+
+    const { data } = await admin
+      .from("packaging_groups")
+      .select("id, foil_system_weight, cardboard_system_weight, foil_transport_weight, cardboard_transport_weight")
+      .eq("tenant_id", tenant)
+      .eq("name", name)
+      .single()
+    createdMerkmale.push({ table: "packaging_groups", id: data!.id })
+    expect(data).toMatchObject({
+      foil_system_weight: 1.5,
+      cardboard_system_weight: 2,
+      foil_transport_weight: 3,
+      cardboard_transport_weight: 4.25,
+    })
   })
 })

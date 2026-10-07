@@ -4,7 +4,7 @@
 **Created:** 2026-09-27
 **Last Updated:** 2026-10-07
 
-> **Refinement 2026-10-07 (Backend umgesetzt, Frontend/QA offen):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
+> **Refinement 2026-10-07 (Backend + Frontend umgesetzt, QA offen):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
 
 ## Dependencies
 - Requires: PROJ-1 (Supabase-Infrastruktur) — Multi-Tenant-Grundschema
@@ -400,6 +400,31 @@ Keine neuen Pakete. Das shadcn/ui-Bauteil „Tabs" ist bereits installiert.
   - Rollen-API (`POST/PATCH …/roles`) erhält `masks: [{ module, maske, accessLevel }]`; die bestehende Route verwirft `accessLevel` bisher still → in `/backend` übernehmen. Die Maskenprüfung dort nutzt `MASKS`, akzeptiert die neuen Masken also schon.
 - Serverseitig müssen Artikelnummer, Warengruppe (fehlende Ziffer = 0) und Bruttogewicht berechnet sowie Schreibrecht/Stufe geprüft werden; `src/lib/api-auth.ts` kennt bisher nur `isTenantAdmin`.
 
+## Implementation Notes (Frontend) – Refinement 2026-10-07
+
+**Stand 2026-10-07:** Artikelmaske auf Reiter umgebaut; Matchcode, Bezeichnungs-Vorschlag, Basisartikelnummer und Palettenklasse sind in der Oberfläche. Geprüft: `tsc`, `eslint`, `vitest`, Playwright-E2E (siehe Ergebnis unten). Neue Pakete: keine (shadcn `tabs` war installiert).
+
+### Gebaut
+- **Reiter statt Abschnitten** (`src/components/warenwirtschaft/article-form.tsx`): Kern & Identifikation (Standard) | Klassifizierung | Zertifizierungen | Verpackung & Logistik | Steuern & Zoll. Ein Formular, ein Speichern; alle Reiter bleiben gemountet (`forceMount`), der inaktive wird per `data-[state=inactive]:hidden` ausgeblendet (Radix setzt bei `forceMount` kein `hidden`). Die Kopfzeile (Artikelnummer, Matchcode · Bezeichnung, Status, Aktionen, Sperr-Banner) liegt außerhalb der Reiter.
+- **Fehlermarkierung:** Die Konstante `TABS` ordnet jedes Formularfeld einem Reiter zu. Reiter mit Validierungsfehler zeigen einen roten Punkt (+ Screenreader-Text „enthält Fehler“); beim Speichern springt die Maske zum ersten Reiter mit Fehler, ebenso bei Server-Fehlern (z. B. „Artikelnummer bereits vergeben“ → Kern).
+- **Kern:** Basisartikelnummer (Pflicht, Ziffernfeld) + Kennziffer mit Live-Vorschau `12345.0001`; Matchcode (Live-Vorschau aus den Kürzeln, nach dem Speichern der gespeicherte Wert) und Warengruppe als berechnete Anzeige.
+- **Bezeichnungs-Vorschlag** (`suggestArticleName` in `src/lib/articles.ts`): Bezeichnungen von Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, durch Leerzeichen getrennt. Die Bezeichnung wird nur gefüllt, solange sie leer ist oder noch dem zuletzt vorgeschlagenen Text entspricht; manuell geänderte (und bestehende) Bezeichnungen werden nie überschrieben. Der Vorschlag reagiert nur auf geänderte Merkmale, nicht auf das bloße Öffnen des Bearbeitungsmodus.
+- **Klassifizierung:** Basisartikel (Merkmal, optional; füllt weiter die Zolltarifnummer vor) steht jetzt hier.
+- **Verpackung & Logistik:** Palettenklasse als Auswahlfeld mit Link zur Pflege-Maske (Leerhinweis wie bei den anderen Merkmalen).
+- **Artikelliste:** neue Spalte „Matchcode“ (ab `lg`), Suche über Artikelnummer, Matchcode und Bezeichnung.
+- **Merkmal-Pflege:** Palettenklassen (Feld „Klasse“), Basisartikel „Kürzel“, Verpackungsgruppe mit 4 Gewichtsfeldern; läuft über die bestehende konfigurierbare Oberfläche (Konfiguration aus `/backend`), Sidebar-Eintrag entsteht aus `MERKMALE`.
+
+### Tests
+- Unit: `suggestArticleName` in `articles.test.ts`.
+- E2E (`tests/PROJ-3-artikelstamm.spec.ts`): Bestandstests an Basisartikelnummer, Punkt in der Artikelnummer und Reiter angepasst (`openTab`-Helfer); neue Tests „Refinement 2026-10-07“ für Reiter-Sichtbarkeit, Fehlermarkierung/Sprung, Matchcode (Vorschau, gespeichert, Kopfzeile, Suche), Bezeichnungs-Vorschlag, Palettenklasse und die 4 Gewichtsfelder der Verpackungsgruppe.
+- **Ergebnis:** `vitest` 245/245; Playwright (Chromium + Mobile Safari) im Gesamtlauf 153 bestanden, 5 Fehlschläge: 2× „Mischartikel" (Test-Fehler, Felder liegen jetzt im Reiter „Verpackung & Logistik" → behoben) und 3× nur Mobile Safari (AC-7, Netzwerkfehler, Palettenklasse) — nach dem Fix in Einzelläufen alle bestanden. AC-7 scheiterte im Gesamtlauf, weil das Next.js-Dev-Overlay den Benutzermenü-Button verdeckte (Dev-Server-Artefakt, in zwei Einzelläufen grün); die Stabilität unter Last ist in `/qa` nochmals zu prüfen.
+- Beim Schreiben der E2E-Tests wurde ein Fehler gefunden und behoben: Inaktive Reiter waren wegen `forceMount` sichtbar.
+
+### Abweichungen / Hinweise
+- Die Reiter sind in der Reihenfolge der Spec; „Basisartikel“ (Merkmal) wurde von Kern nach Klassifizierung verschoben (Spec-Layout).
+- Offene Low-Bugs BUG-2 bis BUG-5 aus der QA wurden nicht angefasst (laut Spec „können“ mit erledigt werden) → `/qa` bzw. eigener Durchgang.
+- Das laufende Docker-Deployment ist noch auf altem Stand (siehe Backend-Hinweis) → `/deploy` nach `/qa`.
+
 ## Implementation Notes (Backend)
 
 **Stand 2026-10-04:** Datenbank, RLS, Routen und Tests fertig; Migrationen sind auf der lokalen Supabase-Instanz angewendet. Geprüft: `tsc`, `eslint`, `npm run build`, `vitest` (206 Tests, davon 83 neu bzw. erweitert), ein **SQL-Test** (`supabase/tests/proj3_rls.sql`, läuft in einer Transaktion und rollt zurück) und **47 Live-Checks** gegen die laufende App + lokale Supabase (Rechte, Sperre, Parallelität, SSR-Seiten; alle Testdaten wieder entfernt). Das Frontend-Verhalten im Browser (Klicks, Dialoge, Timer der Sperre) ist weiterhin **nicht** browsergetestet; das PROJ-2-Playwright-Paket wurde nicht erneut ausgeführt.
@@ -619,7 +644,7 @@ Neue E2E-Datei: `tests/PROJ-3-artikelstamm.spec.ts` (38 Tests je Browser). Fixtu
 
 ## Refinement 2026-10-07 (Änderungen nach Nutzertest)
 
-**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend umgesetzt am 2026-10-07 (siehe „Implementation Notes (Backend) – Refinement 2026-10-07"). Nächste Schritte: `/frontend`, `/qa`.
+**Status:** Spec angepasst, Tech Design (Delta) ergänzt am 2026-10-07 (siehe „F) Delta-Design" im Abschnitt Tech Design), Backend und Frontend umgesetzt am 2026-10-07 (siehe die „Implementation Notes … – Refinement 2026-10-07"). Nächster Schritt: `/qa`.
 
 ### Auswirkungen auf Umsetzung (Delta zu Tech Design / Implementation)
 - **Datenmodell `articles`:** neues Feld `base_article_number` (Ziffern, max. 10, Pflicht); Verweis `base_article_id` bleibt als Klassifizierung (optional); `article_number` = `base_article_number || '.' || kennziffer`; neues berechnetes Feld `match_code` (+ Trigram-Index für Suche); `pallet_class` wird Verweis auf neue Tabelle.

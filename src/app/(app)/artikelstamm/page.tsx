@@ -31,6 +31,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>
 interface ArticleListRow {
   id: string
   article_number: string
+  match_code: string | null
   name: string | null
   commodity_group: string | null
   is_active: boolean | null
@@ -74,7 +75,7 @@ export default async function ArtikelstammPage({ searchParams }: { searchParams:
 
   let query = supabase
     .from("articles")
-    .select("id, article_number, name, commodity_group, is_active, article_type_id", {
+    .select("id, article_number, match_code, name, commodity_group, is_active, article_type_id", {
       count: "exact",
     })
     .eq("tenant_id", tenant.id)
@@ -167,6 +168,9 @@ export default async function ArtikelstammPage({ searchParams }: { searchParams:
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs uppercase tracking-wider">Artikelnummer</TableHead>
+                    <TableHead className="hidden text-xs uppercase tracking-wider lg:table-cell">
+                      Matchcode
+                    </TableHead>
                     <TableHead className="text-xs uppercase tracking-wider">Bezeichnung</TableHead>
                     <TableHead className="hidden text-xs uppercase tracking-wider md:table-cell">
                       Artikeltyp
@@ -187,6 +191,9 @@ export default async function ArtikelstammPage({ searchParams }: { searchParams:
                         >
                           {article.article_number}
                         </Link>
+                      </TableCell>
+                      <TableCell className="hidden font-mono text-xs lg:table-cell">
+                        {article.match_code || <span className="text-muted-foreground">–</span>}
                       </TableCell>
                       <TableCell>
                         {article.name || <span className="text-muted-foreground">–</span>}

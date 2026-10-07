@@ -32,6 +32,18 @@ export function computeMatchCode(codes: (string | null | undefined)[]) {
     .join("-")
 }
 
+/**
+ * Bezeichnungs-Vorschlag aus den Bezeichnungen von Basisartikel, Form/Design, Packungsgröße und
+ * Geschmackssorte (in dieser Reihenfolge, durch Leerzeichen getrennt); fehlende werden übersprungen.
+ */
+export function suggestArticleName(names: (string | null | undefined)[]) {
+  return names
+    .map((name) => (name ?? "").trim())
+    .filter((name) => name !== "")
+    .join(" ")
+    .slice(0, 200)
+}
+
 /** Saison-Ziffer + Artikeltyp-Ziffer + Platzhalter "0"; fehlende Ziffern zählen als 0. */
 export function computeCommodityGroup(
   seasonDigit: number | null | undefined,
