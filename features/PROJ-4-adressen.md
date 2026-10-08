@@ -1,6 +1,6 @@
 # PROJ-4: Warenwirtschaft – Adressen
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-10-08
 **Last Updated:** 2026-10-08
 
@@ -456,7 +456,165 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
 - **E2E-Fixtures** (`tests/global-setup.ts`): die entfernte Maske `merkmal_markeninhaber` durch `merkmal_laender` ersetzt; E2E-Tests für PROJ-4 folgen mit `/qa`.
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-10-08
+**App URL:** http://localhost:3100 (Dev-Server; Port 3000 war durch einen fremden Docker-Container belegt, per `E2E_PORT=3100`)
+**Tester:** QA Engineer (AI)
+**Browser:** Chromium (Chrome), WebKit (Mobile Safari/iPhone 13), Firefox (Desktop, temporäre Konfiguration); Breiten 375 / 768 / 1440 px
+
+### Automatisierte Tests
+- Vitest: 384 grün (neu: `src/lib/address-data.test.ts`, 10 Tests für `sanitizeSearch` und die Lade-Helfer); `tsc` und `npm run lint` ohne Fehler.
+- Playwright `tests/PROJ-4-adressen.spec.ts`: 63 Tests je Browser (davon 7 „known bugs (open)" mit `test.fail()`), Chromium + Mobile Safari + Firefox ohne unerwartete Fehlschläge. Einzelne Tests brauchten beim Dev-Server-Kaltstart einen zweiten Versuch (Datei-Retry 1, siehe Kommentar im Test).
+- Regression PROJ-1/2/3: Gesamtlauf grün bis auf zwei Last-Flakes (PROJ-2 AC-7 und PROJ-3 AC-5, Mobile Safari bzw. Chromium); beide bestehen einzeln in beiden Browsern. Keine Regression durch PROJ-4.
+- Fixtures: `tests/fixtures.ts`, `global-setup.ts`, `global-teardown.ts` um PROJ-4 erweitert (3 Mandanten, 7 Rollen, 10 Nutzer).
+- DB-Performance (EXPLAIN ANALYZE, 3000 Adressen): Liste 0,02 ms, Suche 0,1–1,4 ms. Seitenzeiten im Dev-Server (5–7 s) sind Kompilier-Overhead, kein Anwendungsproblem.
+
+### Acceptance Criteria Status
+(Nummerierung in Spec-Reihenfolge; Tests tragen dieselben Nummern.)
+
+#### Anlegen, Nummer, Validierung (AC-1 bis AC-11)
+- [x] AC-1 Anlegen, Adressnummer „Basis.Kennziffer" automatisch
+- [x] AC-2 Basis ungültig (Buchstaben/leer; >10 Stellen per API 400, im Feld per maxLength gekappt)
+- [x] AC-3 Kennziffer ungültig
+- [x] AC-4 Name leer
+- [x] AC-5 Adressnummer doppelt → „Adressnummer bereits vergeben" (auch bei 6 gleichzeitigen Anlagen: genau 1 gewinnt)
+- [x] AC-6 Vorschlag nächste freie Kennziffer (inkl. Lückensuche bei 9999)
+- [x] AC-7 GLN ≠ 13 Ziffern
+- [x] AC-8 E-Mail-Format (Adresse und Kontakt)
+- [x] AC-9 Telefon/E-Mail/Webseite gespeichert und angezeigt
+- [x] AC-10 Mehrere Rollen
+- [x] AC-11 Fünf Reiter, Kopfzeile sichtbar, Reiter mit Fehler markiert und angesprungen
+
+#### Kürzel / Markeninhaber (AC-12 bis AC-16)
+- [x] AC-12 Duplikat-Hinweis nennt die andere Adresse (auch inaktive), Speichern nicht blockiert
+- [x] AC-13 Nur aktive Adressen mit Kürzel wählbar (UI und API)
+- [x] AC-14 Leerhinweis „Noch keine Adresse mit Kürzel" mit Link
+- [x] AC-15 Matchcode wird bei Kürzeländerung neu berechnet
+- [x] AC-16 Matchcode nutzt Kürzel; ohne Kürzel entfällt der Teil
+
+#### Länder (AC-17 bis AC-21)
+- [x] AC-17 „VAE"/„AE" speicherbar, Großbuchstaben
+- [x] AC-18 Kürzel <2, >3, Ziffern abgelehnt (UI-Feld kappt bei 3 Zeichen, API prüft hart)
+- [x] AC-19 Duplikat abgelehnt (case-insensitiv)
+- [x] AC-20 Leerhinweis „Noch keine Einträge" mit Link
+- [x] AC-21 Label „Land" führt zur Pflege-Maske
+
+#### Hierarchie (AC-22 bis AC-26)
+- [x] AC-22 Übergeordnete Adresse gespeichert
+- [x] AC-23 Mehrere untergeordnete gelistet und klickbar
+- [x] AC-24 Zyklen abgelehnt (UI-Auswahl, API, direkter DB-Zugriff)
+- [x] AC-25 Rechnungsempfänger/-versand/Abrechnungsgesellschaft gespeichert; Selbstverweis erlaubt
+- [x] AC-26 Inaktive nicht wählbar, bestehender Verweis als „inaktiv" sichtbar
+
+#### Kontakte (AC-27 bis AC-32)
+- [x] AC-27 Anlegen mit vorbelegter Adresse (Funktion ok, aber siehe BUG-1)
+- [x] AC-28 Nachname Pflicht
+- [x] AC-29 Kontakte aller Vorfahren mit Herkunft/Ebene
+- [x] AC-30 Geerbte Kontakte nur lesbar, Kontakte Untergeordneter nicht sichtbar
+- [x] AC-31 Gesamtliste durchsuchbar, Adresse je Zeile (nur mit Adressen-Recht, siehe BUG-3)
+- [x] AC-32 Deaktiviert gekennzeichnet, kein Löschen (Route 405, REST-Delete wirkungslos)
+
+#### Deaktivieren / Reaktivieren (AC-33 bis AC-40)
+- [x] AC-33 Ohne Zusatzrecht keine Option; API 403, RPC 42501; direktes `is_active`-Update gesperrt
+- [x] AC-34 Ohne Unteradressen: Adresse + alle Kontakte inaktiv
+- [x] AC-35 Rückfrage; Ja = alle Ebenen inkl. Kontakte, Nein = nur diese
+- [x] AC-36 Reaktivieren mit Rückfrage; Ja = alle aktiv, Nein = nur diese
+- [x] AC-37 Kontakte bleiben nach Reaktivierung inaktiv, einzeln aktivierbar
+- [x] AC-38 Nur „Deaktivieren" verfügbar
+- [x] AC-39 Deaktivierter Markeninhaber bleibt am Artikel sichtbar, nicht neu wählbar
+- [x] AC-40 Kürzel deaktivierter Adressen löst weiter den Hinweis aus
+
+#### Rechte, Sperre, Mandanten (AC-41 bis AC-45)
+- [x] AC-41 Lager (nur lesen): keine Bearbeitungs-/Anlegen-/Kontaktaktionen
+- [x] AC-42 Sperre: zweiter Nutzer nur lesend, Meldung nennt Nutzer (Adresse und Kontakt) (Wortlaut siehe BUG-2)
+- [x] AC-43 Sperre läuft nach 15 Min. ab, Erneut-sperren nennt neuen Halter
+- [x] AC-44 Logout mit ungespeicherten Änderungen: Abbrechen / Speichern & abmelden / Verwerfen & abmelden (Adresse); Kontakt-Dialog fragt bei „Abbrechen" (nicht bei Esc, siehe BUG-5)
+- [x] AC-45 Mandantentrennung (UI, API, PostgREST, RPC)
+
+#### Liste und Suche (AC-46 bis AC-48)
+- [x] AC-46 Serverseitige Suche über Nummer, Name, Zusatz, Kürzel, GLN, Ort, PLZ; Pagination (3000 Adressen: 120 Seiten)
+- [x] AC-47 Rollenfilter, Status-Standard „Aktiv", Landfilter
+- [x] AC-48 Leerzustand; Button nur mit Schreibrecht
+
+**Ergebnis: 48/48 Kriterien funktional erfüllt**, aber mit den unten genannten Fehlern in Randbereichen.
+
+### Edge Cases Status
+- [x] Gleichzeitige Bearbeitung, Tab-Schließen (Sperre läuft ab), Logout-Abfrage, doppelte Nummer (Race), doppeltes Kürzel, Zyklen, Selbstverweise
+- [x] Kaskade vollständig oder gar nicht (40 Ebenen tief in <5 s; 500 Kinder); Sperren von Unteradressen blockieren nicht, Sperre der gewählten Adresse schon (409 mit Nutzername)
+- [x] Nutzer mit Deaktivieren-Recht, aber ohne Kontakt-Recht: Kontakte werden mitdeaktiviert, direkter Kontakt-Zugriff 403
+- [x] Deaktiviertes Land bleibt sichtbar, nicht neu wählbar
+- [x] Netzwerkausfall beim Speichern: Eingaben bleiben, Meldung „Verbindung zum Server fehlgeschlagen", erneutes Speichern klappt
+- [x] Direktaufruf ohne Recht → Zugriff verweigert; Kontakt-Reiter ohne Kontakte-Leserecht ausgeblendet
+- [x] Wechsel der übergeordneten Adresse wechselt die geerbten Kontakte (nach Speichern)
+- [x] Kontakt an deaktivierter Adresse nicht anlegbar; Kontaktadresse nicht änderbar
+
+### Security Audit Results
+- [x] Authentifizierung: alle 12 neuen Routen ohne Login 401, Seiten leiten auf Login
+- [x] Autorisierung: Rechte pro Maske (Adressen/Kontakte/Länder/Artikelstamm) per UI, API und PostgREST; Zusatzrecht wirkt nur mit „Lesen + Bearbeiten" (DB-Check-Constraint)
+- [x] Mandantentrennung: fremder Mandant 403/404, Verweise über Mandantengrenzen abgelehnt (FK), RPCs (`address_options`, `address_contacts`, `address_subtree`, `set_address_status`) liefern nichts über Mandantengrenzen
+- [x] Eingabe-Validierung: Zod serverseitig, DB-Constraints als zweite Ebene (Rollen, GLN, Nummern, Längen); Unicode-Ziffern abgelehnt
+- [x] XSS: Payloads in Adress- und Kontaktfeldern, Kürzel, Auswahl werden als Text gerendert
+- [x] Injection: Such-/Filter-Parameter (`%`, `_`, `,`, `)`, Quotes, 500 Zeichen) liefern keine 5xx und keine fremden Zeilen; Optionssuche escaped Wildcards
+- [x] Mass Assignment: `tenant_id`, `is_active`, `address_number`, `search_text`, `created_by` im Body wirkungslos
+- [x] Kein Hard-Delete (Route 405, REST-Delete wirkungslos, keine DELETE-Policy)
+- [x] Fehlermeldungen ohne DB-Interna; keine Secrets im HTML
+- [x] Sperren: fremde Schreibzugriffe 55P03, fehlende Sperre abgelehnt, Sperr-Endpunkt mandantengetrennt
+- [x] 40 parallele Anfragen ohne 5xx
+- Hinweis (kein Fehler): Es gibt kein Rate Limiting an den API-Routen (projektweit, auch PROJ-3).
+- Hinweis (Entscheidung dokumentiert): Leser des Artikelstamms können über PostgREST alle Spalten der Adressen lesen (inkl. Telefon, E-Mail, USt-IdNr., Bemerkung), nicht aber Kontakte. Für Markeninhaber würden Nummer, Name und Kürzel genügen; Einschränkung auf diese Spalten wäre eine mögliche Härtung.
+
+### Bugs Found
+
+#### BUG-1: Speichern eines Kontakts sendet auch das Adressformular ab
+- **Severity:** High
+- **Ursache:** Der Kontakt-Dialog liegt im React-Baum innerhalb des `<form>` der Adressmaske. Das `submit`-Event des Dialogs bubbelt über das Portal zum Adress-Formular (`address-form.tsx`, `onSubmit`).
+- **Steps to Reproduce:**
+  1. Adresse öffnen, Reiter „Kontakt", „Kontakt anlegen", Nachname eingeben, „Anlegen"
+  2. Expected: nur der Kontakt wird gespeichert, Reiter bleibt „Kontakt"
+  3. Actual: zusätzlich PATCH auf die Adresse (`updated_at`/`updated_by` ändern sich, Toast „Adresse gespeichert"), die Maske baut sich neu auf und springt auf „Stammdaten"
+  4. Im Bearbeitungsmodus (Adresse mit ungespeicherten Änderungen) werden diese beim Kontakt-Speichern still mitgespeichert, Sperre freigegeben und der Bearbeitungsmodus beendet; bei Fehlern im Adressformular springt die Maske zum Fehler-Reiter.
+- **Test:** `BUG-1`, `BUG-1b` (open)
+- **Priority:** Fix before deployment
+
+#### BUG-2: Falsche Grammatik in der Sperrmeldung („Der Adresse …")
+- **Severity:** Low
+- **Steps:** Adresse in Bearbeitung, zweiter Nutzer ruft Sperre ab
+- **Expected:** „Die Adresse wird gerade von … bearbeitet." / Banner „bearbeitet die Adresse jetzt"
+- **Actual:** „Der Adresse wird gerade von …" (API `locks/route.ts` und `edit-lock-banner.tsx` nutzen fest „Der/den {noun}")
+- **Priority:** Fix in next sprint (vor Deploy ratsam, da sichtbar)
+
+#### BUG-3: Kontakte-Gesamtliste ohne Adresse für Nutzer ohne Adressen-Recht
+- **Severity:** Low
+- **Steps:** Rolle nur mit „Kontakte lesen" → `/kontakte`
+- **Expected:** Spalte „Adresse" zeigt die zugehörige Adresse (Spec AC-31)
+- **Actual:** „–", weil `addresses` per RLS nur mit Maske Adressen/Artikelstamm lesbar ist. Entweder bewusst (dann in Spec klären) oder RLS/Anzeige anpassen.
+- **Priority:** Spec-Entscheidung nötig; nicht blockierend
+
+#### BUG-4: Horizontaler Seitenüberlauf bei 768 px
+- **Severity:** Medium
+- **Steps:** Viewport 768 px, `/adressen` mit Treffern
+- **Expected:** keine horizontale Seitenverschiebung
+- **Actual:** 65–80 px Überlauf (Button „Adresse anlegen" und Tabelle rechts abgeschnitten); bei 1024 px 23 px. Gemeinsames Layout: die Artikelliste (PROJ-3) ist stärker betroffen (149 px bei 768 px). 375 und 1440 px sind in Ordnung.
+- **Priority:** Fix in next sprint (übergreifend, nicht PROJ-4-spezifisch)
+
+#### BUG-5: Esc/Klick außerhalb schließt den Kontakt-Dialog ohne Verwerfen-Rückfrage
+- **Severity:** Low
+- **Steps:** Kontakt bearbeiten, Nachname ändern, Esc drücken
+- **Expected:** Rückfrage „Änderungen verwerfen?" wie bei „Abbrechen"
+- **Actual:** Dialog schließt, Eingabe geht verloren (Sperre wird freigegeben)
+- **Priority:** Fix in next sprint
+
+### Beobachtungen (kein Fehler)
+- Länderkürzel- und Kennziffer-Felder kappen per `maxLength` im Browser; Überlängen sind nur über die API testbar (dort 400).
+- Auf Mobilgeräten bleibt die Sidebar-Sheet nach „Abbrechen" im Logout-Dialog offen.
+- Port 3000 ist auf dieser Maschine von einem anderen Projekt belegt; E2E läuft mit `E2E_PORT=3100`.
+
+### Summary
+- **Acceptance Criteria:** 48/48 bestanden
+- **Bugs Found:** 5 (0 critical, 1 high, 1 medium, 3 low)
+- **Security:** Pass (keine Sicherheitslücken; zwei Hinweise oben)
+- **Production Ready:** NO (wegen BUG-1, High)
+- **Recommendation:** BUG-1 beheben und `/qa` erneut ausführen; BUG-2 bis BUG-5 können danach oder parallel folgen.
 
 ## Deployment
 _To be added by /deploy_

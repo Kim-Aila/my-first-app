@@ -42,3 +42,24 @@ export const P3_LEER = "e2e_p3_leer" // Artikelstamm write in the empty tenant
 export const P3_FREMD = "e2e_p3_fremd" // Artikelstamm write in the foreign tenant only
 export const P3_MERKMAL_ONLY = "e2e_p3_saisonpflege" // only Merkmal Saisons write, no Artikelstamm
 export const P3_BASE_CODE = "1200"
+
+// PROJ-4 fixtures (created in global-setup, removed in global-teardown). Users use P4_EMAIL_DOMAIN,
+// tenants P4_TENANT_PREFIX, so teardown can sweep them (tenant deletion cascades to addresses,
+// contacts, countries, articles, roles and locks).
+export const P4_EMAIL_DOMAIN = "e2e-proj4.local"
+export const P4_TENANT_PREFIX = "E2E-P4 "
+export const P4_TENANT = "E2E-P4 Mandant" // countries DE + AT, base article 1300, article type FW
+export const P4_TENANT_LEER = "E2E-P4 Leer" // no addresses, no countries
+export const P4_TENANT_FREMD = "E2E-P4 Fremd" // second tenant, for isolation tests
+export const P4_PASSWORD = "E2E-Proj4-Pw9!"
+export const P4_ADMIN = "e2e_p4_admin" // Adressen write + toggle, Kontakte write, Länder write, Artikelstamm write
+export const P4_EINKAUF = "e2e_p4_einkauf" // Adressen write, Kontakte write, Länder read, Artikelstamm write
+export const P4_EINKAUF2 = "e2e_p4_einkauf2" // same role, second person (lock conflicts)
+export const P4_LAGER = "e2e_p4_lager" // Adressen read, Kontakte read
+export const P4_LAGER_OHNE_KONTAKTE = "e2e_p4_lagerohnekontakte" // Adressen read only
+export const P4_NUR_KONTAKTE = "e2e_p4_nurkontakte" // Kontakte read only (no Adressen mask)
+export const P4_NUR_ARTIKEL = "e2e_p4_nurartikel" // Artikelstamm read only
+export const P4_OHNE = "e2e_p4_ohne" // member, role without any Warenwirtschaft mask
+export const P4_LEER = "e2e_p4_leer" // Adressen/Kontakte/Länder/Artikelstamm write in the empty tenant
+export const P4_FREMD = "e2e_p4_fremd" // everything in the foreign tenant only
+export const P4_BASE_CODE = "1300"

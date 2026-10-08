@@ -7,6 +7,8 @@ import {
   P2_TENANT_PREFIX,
   P3_EMAIL_DOMAIN,
   P3_TENANT_PREFIX,
+  P4_EMAIL_DOMAIN,
+  P4_TENANT_PREFIX,
 } from "./fixtures"
 
 export default async function globalTeardown() {
@@ -28,7 +30,10 @@ export default async function globalTeardown() {
     if (error) throw error
     for (const user of data.users) {
       const email = user.email ?? ""
-      if (email.endsWith(`@${P2_EMAIL_DOMAIN}`) || email.endsWith(`@${P3_EMAIL_DOMAIN}`)) {
+      if (
+        email.endsWith(`@${P2_EMAIL_DOMAIN}`) || email.endsWith(`@${P3_EMAIL_DOMAIN}`) ||
+        email.endsWith(`@${P4_EMAIL_DOMAIN}`)
+      ) {
         await admin.auth.admin.deleteUser(user.id)
       }
     }
@@ -38,7 +43,10 @@ export default async function globalTeardown() {
   // PROJ-2: every tenant created by tests (cascades to roles / role_permissions / user_roles).
   const { data: tenants } = await admin.from("tenants").select("id, name")
   for (const tenant of tenants ?? []) {
-    if (tenant.name.startsWith(P2_TENANT_PREFIX) || tenant.name.startsWith(P3_TENANT_PREFIX)) {
+    if (
+      tenant.name.startsWith(P2_TENANT_PREFIX) || tenant.name.startsWith(P3_TENANT_PREFIX) ||
+      tenant.name.startsWith(P4_TENANT_PREFIX)
+    ) {
       await admin.from("tenants").delete().eq("id", tenant.id)
     }
   }

@@ -26,6 +26,22 @@ import {
   P3_FREMD,
   P3_MERKMAL_ONLY,
   P3_BASE_CODE,
+  P4_EMAIL_DOMAIN,
+  P4_TENANT,
+  P4_TENANT_LEER,
+  P4_TENANT_FREMD,
+  P4_PASSWORD,
+  P4_ADMIN,
+  P4_EINKAUF,
+  P4_EINKAUF2,
+  P4_LAGER,
+  P4_LAGER_OHNE_KONTAKTE,
+  P4_NUR_KONTAKTE,
+  P4_NUR_ARTIKEL,
+  P4_OHNE,
+  P4_LEER,
+  P4_FREMD,
+  P4_BASE_CODE,
 } from "./fixtures"
 
 // Runs once before ALL projects (chromium, Mobile Safari, ...) start — unlike a per-file
@@ -38,6 +54,7 @@ export default async function globalSetup() {
   await setupProj1(admin)
   await setupProj2(admin)
   await setupProj3(admin)
+  await setupProj4(admin)
 }
 
 async function setupProj1(admin: SupabaseClient) {
@@ -206,6 +223,105 @@ async function setupProj3(admin: SupabaseClient) {
     const { data: created, error } = await admin.auth.admin.createUser({
       email,
       password: P3_PASSWORD,
+      email_confirm: true,
+    })
+    if (error) throw error
+    const id = created.user.id
+    await admin.from("user_profiles").insert({ id, username, email, is_super_admin: false })
+    await admin.from("user_tenant_access").insert({ user_id: id, tenant_id: tenantId })
+    if (roleId) await admin.from("user_roles").insert({ user_id: id, tenant_id: tenantId, role_id: roleId })
+  }
+}
+
+// PROJ-4: a tenant with countries/base article/article type, an empty tenant, a foreign tenant;
+// roles with different Adressen/Kontakte/Länder/Artikelstamm rights (incl. the toggle right).
+async function setupProj4(admin: SupabaseClient) {
+  const { data: existing } = await admin
+    .from("user_profiles")
+    .select("id")
+    .eq("username", P4_EINKAUF)
+    .maybeSingle()
+  if (existing) return
+
+  const tenant = async (name: string) => {
+    const { data, error } = await admin.from("tenants").insert({ name }).select("id").single()
+    if (error) throw error
+    return data.id as string
+  }
+  type Perm = [string, "read" | "write", boolean?]
+  const role = async (tenantId: string, name: string, perms: Perm[]) => {
+    const { data, error } = await admin.from("roles").insert({ tenant_id: tenantId, name }).select("id").single()
+    if (error) throw error
+    if (perms.length > 0) {
+      const { error: permError } = await admin.from("role_permissions").insert(
+        perms.map(([maske, access_level, toggle]) => ({
+          role_id: data.id,
+          module: "warenwirtschaft",
+          maske,
+          access_level,
+          can_toggle_active: toggle === true,
+        }))
+      )
+      if (permError) throw permError
+    }
+    return data.id as string
+  }
+
+  const t = await tenant(P4_TENANT)
+  const tLeer = await tenant(P4_TENANT_LEER)
+  const tFremd = await tenant(P4_TENANT_FREMD)
+
+  const full: Perm[] = [
+    ["adressen", "write", true],
+    ["kontakte", "write"],
+    ["merkmal_laender", "write"],
+    ["artikelstamm", "write"],
+  ]
+  const rAdmin = await role(t, "Admin", full)
+  const rEinkauf = await role(t, "Einkauf", [
+    ["adressen", "write"],
+    ["kontakte", "write"],
+    ["merkmal_laender", "read"],
+    ["artikelstamm", "write"],
+  ])
+  const rLager = await role(t, "Lager", [
+    ["adressen", "read"],
+    ["kontakte", "read"],
+  ])
+  const rLagerOhne = await role(t, "Lager ohne Kontakte", [["adressen", "read"]])
+  const rNurKontakte = await role(t, "Nur Kontakte", [["kontakte", "read"]])
+  const rNurArtikel = await role(t, "Nur Artikelstamm", [["artikelstamm", "read"]])
+  const rOhne = await role(t, "Ohne Warenwirtschaft", [])
+  const rLeer = await role(tLeer, "Alles", full)
+  const rFremd = await role(tFremd, "Alles", full)
+
+  // Merkmale of the main tenant (Superuser, bypasses RLS).
+  await admin.from("countries").insert([
+    { tenant_id: t, code: "DE", name: "Deutschland" },
+    { tenant_id: t, code: "AT", name: "Österreich" },
+  ])
+  await admin.from("article_types").insert({ tenant_id: t, code: "FW", name: "Fertigware", commodity_digit: 4 })
+  await admin
+    .from("base_articles")
+    .insert({ tenant_id: t, code: P4_BASE_CODE, name: "Pralinen", customs_tariff_number: "18069019" })
+
+  const users: [string, string, string | null][] = [
+    [P4_ADMIN, t, rAdmin],
+    [P4_EINKAUF, t, rEinkauf],
+    [P4_EINKAUF2, t, rEinkauf],
+    [P4_LAGER, t, rLager],
+    [P4_LAGER_OHNE_KONTAKTE, t, rLagerOhne],
+    [P4_NUR_KONTAKTE, t, rNurKontakte],
+    [P4_NUR_ARTIKEL, t, rNurArtikel],
+    [P4_OHNE, t, rOhne],
+    [P4_LEER, tLeer, rLeer],
+    [P4_FREMD, tFremd, rFremd],
+  ]
+  for (const [username, tenantId, roleId] of users) {
+    const email = `${username}@${P4_EMAIL_DOMAIN}`
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email,
+      password: P4_PASSWORD,
       email_confirm: true,
     })
     if (error) throw error
