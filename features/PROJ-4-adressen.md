@@ -1,6 +1,6 @@
 # PROJ-4: Warenwirtschaft – Adressen
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-10-08
 **Last Updated:** 2026-10-08
 
@@ -210,13 +210,183 @@ Land (Name, Pflicht), Länderkürzel (**Pflicht, 2 bis 3 Buchstaben**, automatis
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
-| _folgt mit /architecture_ | | |
+| Aktivieren/Deaktivieren als generisches Zusatzrecht pro Maske (zusätzlicher Schalter im Rollen-Dialog), in PROJ-4 nur für Adressen aktiviert | Nutzerentscheidung 2026-10-08; später für Artikel, Einkauf u. a. wiederverwendbar, ohne Zugriffsstufen zu vermischen; bestehendes Artikel-Verhalten bleibt unverändert | 2026-10-08 |
+| Drei neue Masken (Adressen, Kontakte, Länder); Maske „Markeninhaber" entfällt samt ihren Rollenrechten | Rechte pro Maske laut PROJ-2; Kontakte brauchen eigene Rechte (Gesamtliste, Reiter-Sichtbarkeit) | 2026-10-08 |
+| Adressnummer wird wie die Artikelnummer serverseitig zusammengesetzt und gespeichert; Eindeutigkeit pro Mandant per Datenbank-Constraint | Bewährtes PROJ-3-Muster; schützt auch bei gleichzeitigem Speichern | 2026-10-08 |
+| Vorschlag der nächsten freien Kennziffer als eigene kleine Abfrage (Basis → nächste freie Kennziffer), nicht als Zähler | Spec fordert manuelle Eingabe ohne automatisches Hochzählen; der Vorschlag ist nur ein änderbarer Hinweis | 2026-10-08 |
+| Hierarchie als „Verweis auf übergeordnete Adresse" an der Adresse selbst (keine eigene Beziehungstabelle) | Genau eine übergeordnete Adresse laut Spec; einfachste Struktur, für Agenten direkt abfragbar | 2026-10-08 |
+| Hierarchie-Auswertungen (alle Über-/Unterordnungen, Zyklusprüfung, kaskadierendes (De)Aktivieren) laufen als datenbankseitige Rekursion, nicht als Schleife in der Anwendung | Performant auch bei tiefen Hierarchien; eine zentrale Stelle für Oberfläche und Agenten | 2026-10-08 |
+| Zyklusprüfung wird in der Datenbank beim Speichern erzwungen (zusätzlich zur Prüfung in der Auswahl) | Verhindert Zyklen auch bei gleichzeitigen Änderungen oder direkten Schnittstellenaufrufen | 2026-10-08 |
+| Kaskadierendes Deaktivieren/Reaktivieren als ein einziger, unteilbarer Datenbankvorgang | „Vollständig oder gar nicht" laut Spec; kein halb deaktivierter Zustand | 2026-10-08 |
+| Das Mitdeaktivieren der Kontakte ist eine Folge der Adress-Aktion und läuft mit erhöhten Rechten, nachdem Zusatzrecht und Mandant geprüft wurden | Spec: Nutzer ohne Kontakt-Recht deaktiviert trotzdem Kontakte mit | 2026-10-08 |
+| Kaskade ändert nur den Status; Bearbeitungssperren von Unteradressen blockieren sie nicht, die Sperre der gewählten Adresse selbst schon | Es werden keine Formulardaten überschrieben; sonst könnte ein offener Tab das Stilllegen einer ganzen Hierarchie verhindern (bitte im Review bestätigen) | 2026-10-08 |
+| Kontakte der übergeordneten Adressen werden per Abfrage „Kontakte aller Vorfahren inkl. Ebene" geliefert, nicht kopiert | Keine doppelte Datenhaltung; Wechsel der übergeordneten Adresse wirkt sofort | 2026-10-08 |
+| Rollen sind eine feste Liste an der Adresse (Mehrfachauswahl), keine eigene Tabelle | Rollen sind fest vorgegeben; einfach filterbar und lesbar | 2026-10-08 |
+| Eine gemeinsame, indizierte Suchspalte (Nummer, Name, Zusatz, Kürzel, GLN, Ort, PLZ) | Wie Matchcode bei Artikeln: eine schnelle Suche statt vieler einzelner | 2026-10-08 |
+| Kürzel-Duplikatprüfung als Abfrage, die Treffer inkl. inaktiver Adressen nennt; kein Unique-Constraint | Nutzervorgabe: nur Hinweis, nicht blockierend | 2026-10-08 |
+| Markeninhaber am Artikel verweist auf die Adresse; Tabelle „Markeninhaber" entfällt; Neuberechnung der Matchcodes bei Kürzeländerung nach demselben Muster wie bei den Merkmal-Kürzeln | Keine zweite Pflegestelle; Matchcodes veralten nicht; Testdaten dürfen bereinigt werden | 2026-10-08 |
+| Länder laufen über die bestehende Merkmal-Pflege-Oberfläche und -Schnittstellen (Konfiguration #10, eigene Maske) | Spec: „wie die anderen Merkmal-Tabellen"; keine neue Oberfläche nötig | 2026-10-08 |
+| Bearbeitungssperre: neue Datensatztypen „Adresse" und „Kontakt" im bestehenden generischen Mechanismus | Wiederverwendung aus PROJ-3, keine neue Sperr-Tabelle | 2026-10-08 |
+| Auswahlfelder für Adressen laden serverseitig mit Suche (Treffer-Limit), nicht die komplette Liste | Mehrere tausend Adressen pro Mandant; die bisherigen Merkmal-Auswahlen (kleine Listen) laden alles | 2026-10-08 |
+| Umsetzung als neue Migration; bestehende Migrationen bleiben unverändert | Gleiches Vorgehen wie PROJ-3-Refinement | 2026-10-08 |
+| Keine neuen Pakete | Alle benötigten shadcn/ui-Bausteine, react-hook-form und zod sind vorhanden | 2026-10-08 |
 
 ---
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Komponentenstruktur
+
+```
+Sidebar-Navigation (Erweiterung)
+└── Gruppe "Warenwirtschaft"
+    ├── Artikelstamm
+    ├── NEU Adressen
+    ├── NEU Kontakte (Gesamtliste)
+    └── Merkmale
+        ├── ... (bisherige, ohne "Markeninhaber")
+        └── NEU Länder
+    (jeder Punkt nur sichtbar bei Recht auf die jeweilige Maske)
+
+Adressliste
+├── Kopfbereich: Titel + Button "Adresse anlegen" (nur bei Schreibrecht)
+├── Suche (Nummer, Name, Zusatz, Kürzel, GLN, Ort, PLZ)
+├── Filter: Rolle, Status (Standard: Aktiv), Land
+├── Tabelle: Adressnummer, Name, Ort, Land (Kürzel), Rollen (Badges),
+│            Übergeordnete Adresse, Status-Badge
+├── Seitenwechsel (Pagination)
+└── Leerzustand "Noch keine Adressen angelegt" (+ Button nur bei Schreibrecht)
+
+Adressmaske (Ansehen / Bearbeiten / Neu)
+├── Kopfzeile (immer sichtbar): Adressnummer, Name, Rollen, Status-Badge
+│   └── Aktionen: Bearbeiten | Speichern | Abbrechen
+│                 | Deaktivieren/Aktivieren (nur mit Zusatzrecht)
+├── Sperr-Banner ("Wird gerade von <Name> bearbeitet – nur Lesezugriff")
+└── Reiter in EINEM Formular (Reiter mit Fehlern werden markiert)
+    ├── Stammdaten
+    │   ├── Adressnummer-Basis + Kennziffer (mit Vorschlag der nächsten freien)
+    │   │   └── Live-Vorschau "Adressnummer: 4711.0001"
+    │   ├── Name, Namenszusatz
+    │   ├── Kürzel (mit Hinweis bei Duplikat, nicht blockierend)
+    │   ├── GLN
+    │   └── Rollen (Mehrfachauswahl)
+    ├── Anschrift & Erreichbarkeit
+    │   ├── Straße, Hausnummer, PLZ, Ort
+    │   ├── Land (Auswahlfeld, Beschriftung = Link zur Länder-Pflege)
+    │   └── Telefon, E-Mail, Webseite
+    ├── Kontakt (nur sichtbar/nutzbar mit Leserecht auf Kontakte)
+    │   ├── Tabelle: eigene Kontakte (bearbeitbar) + Kontakte aller
+    │   │   übergeordneten Adressen (nur lesbar, Spalte "Herkunft/Ebene")
+    │   └── Dialog "Kontakt anlegen / bearbeiten" (Adresse vorbelegt)
+    ├── Verknüpfungen
+    │   ├── Übergeordnete Adresse
+    │   ├── Untergeordnete Adressen (nur Anzeige, Klick springt dorthin)
+    │   ├── Rechnungsempfänger
+    │   ├── Rechnungsversand an
+    │   └── Abrechnungsgesellschaft
+    └── Steuer & Bemerkung (USt-IdNr., Bemerkung)
+
+Dialog "Deaktivieren / Aktivieren"
+└── Rückfrage, falls untergeordnete Adressen existieren:
+    "Untergeordnete Adressen auch deaktivieren/aktivieren?" Ja | Nein
+
+Kontakte – Gesamtliste
+├── Suche (Name, Funktion, E-Mail, Telefon …) + Filter Status
+├── Tabelle: Name, Funktion, Telefon/Mobil, E-Mail, zugehörige Adresse, Status
+└── Aktionen je Kontakt: Bearbeiten, (De)Aktivieren (mit Kontakt-Schreibrecht)
+
+Länder-Pflege
+└── Die vorhandene Merkmal-Pflege-Seite, um eine Konfiguration erweitert
+    (Land, Länderkürzel 2–3 Buchstaben, automatisch Großbuchstaben)
+
+Wiederverwendbare Bausteine
+├── Adress-Auswahlfeld (NEU): suchbar, lädt Treffer serverseitig, zeigt Inaktive
+│   nur als Kennzeichnung bei bestehenden Verweisen, Beschriftung = Link
+│   (genutzt für: Übergeordnete Adresse, Rechnungsempfänger, Rechnungsversand,
+│   Abrechnungsgesellschaft, Markeninhaber am Artikel)
+├── Bestehende Bausteine: Auswahlfeld mit Tabellenbezug (Land), Sperr-Banner,
+│   Status-Badge, Reiter-Formular, Logout-Sicherheitsabfrage
+└── Rollen-Dialog (PROJ-2): NEU pro Maske optionaler Schalter
+    "Darf aktivieren/deaktivieren" (erscheint nur bei Masken, die das unterstützen)
+
+Änderung am Artikelformular (PROJ-3)
+└── Feld "Markeninhaber": Auswahl nur aktiver Adressen mit Kürzel
+    (statt Merkmal-Tabelle); Leerhinweis "Noch keine Adresse mit Kürzel – hier anlegen"
+```
+
+### B) Datenmodell (in einfacher Sprache)
+
+**Adresse** (gehört zu genau einem Mandanten) – speichert:
+- Adressnummer-Basis (nur Ziffern, max. 10) und Kennziffer (genau 4 Ziffern)
+- Adressnummer = Basis + „." + Kennziffer, wird beim Speichern **automatisch zusammengesetzt** und ist **pro Mandant eindeutig** (die Datenbank selbst verhindert Doppelte)
+- Name (Pflicht), Namenszusatz, Kürzel (max. 10 Zeichen, **nicht** eindeutig erzwungen), GLN (13 Ziffern)
+- Rollen: feste Liste aus Kunde, Lieferant, Spediteur, Dienstleister, Lieferadresse, Sonstige (Mehrfachauswahl)
+- Anschrift: Straße, Hausnummer, PLZ, Ort, Verweis auf ein Land
+- Allgemeine Erreichbarkeit: Telefon, E-Mail, Webseite
+- USt-IdNr., Bemerkung
+- Verweise auf **andere Adressen** desselben Mandanten: übergeordnete Adresse (höchstens eine), Rechnungsempfänger, Rechnungsversand an, Abrechnungsgesellschaft (jeweils leer = Standardregel laut Spec)
+- Status Aktiv/Inaktiv (Standard: Aktiv), Angelegt/Geändert-Zeitstempel + wer
+- Automatisch gepflegte Suchzeile aus Nummer, Name, Zusatz, Kürzel, GLN, Ort, PLZ (nur für die schnelle Suche)
+
+**Untergeordnete Adressen** werden nicht gespeichert, sondern aus den „Übergeordnete Adresse"-Verweisen abgeleitet. Ebenso die Kette aller Vorfahren bzw. Nachkommen.
+
+**Kontakt** (gehört zu genau einer Adresse und damit einem Mandanten) – speichert:
+- Anrede, Vorname, Nachname (Pflicht), Funktion/Position, Telefon, Mobil, E-Mail, Bemerkung
+- Status Aktiv/Inaktiv, Angelegt/Geändert-Zeitstempel + wer
+- Kontakte übergeordneter Adressen werden **nicht kopiert**, sondern bei Anzeige per Abfrage aus der Hierarchie geholt.
+
+**Land** (neue Merkmal-Tabelle, je Mandant getrennt): Name (Pflicht), Länderkürzel (2–3 Buchstaben, Großbuchstaben, pro Mandant eindeutig), aktiv/inaktiv. Startet leer, nur deaktivierbar.
+
+**Änderung am Artikel:** „Markeninhaber" verweist künftig auf eine Adresse statt auf einen Merkmal-Eintrag. Die Merkmal-Tabelle „Markeninhaber" entfällt (samt Maske und deren Rollenrechten). Bestehende Zuordnungen werden geleert (Testdaten). Der Matchcode nutzt das Kürzel der Adresse; ändert sich das Kürzel, werden die Matchcodes betroffener Artikel automatisch neu berechnet.
+
+**Rollen-Maskenrechte (PROJ-2):** Jedes Maskenrecht erhält ein zusätzliches Ja/Nein-Feld „darf aktivieren/deaktivieren" (Standard: Nein). Der Rollen-Dialog zeigt den Schalter nur bei Masken, die ihn unterstützen – derzeit nur Adressen. Die Standardrolle Administrator bekommt es für Adressen.
+
+**Bearbeitungssperre (PROJ-3):** Zwei neue Datensatztypen „Adresse" und „Kontakt" im bestehenden Mechanismus (15 Min., serverseitig geprüft).
+
+**Neue Masken im Masken-Register:** Adressen, Kontakte, Länder (Modul „Warenwirtschaft"); „Markeninhaber" entfällt → insgesamt 13 Masken im Modul. Standard-Rechte laut Spec: Admin alles; Einkauf/Verkauf Adressen + Kontakte lesen/bearbeiten, Länder lesen; Lager/Produktion lesen.
+
+**Speicherort:** Lokale, selbst gehostete PostgreSQL-Datenbank (Supabase), wie PROJ-1 bis 3. Alle Tabellen tragen den Mandanten und sind per Zugriffsschutz (RLS) strikt getrennt; Verweise zwischen Adressen sind nur innerhalb desselben Mandanten möglich.
+
+### C) Technische Entscheidungen (für PM verständlich)
+
+1. **Ein Adressstamm, Verknüpfungen als Verweise zwischen Adressen** — Hierarchie, Rechnungsempfänger, Rechnungsversand und Abrechnungsgesellschaft sind einfache Verweise. Einkauf, Verkauf und Agenten können sie direkt abfragen („Wer ist der Rechnungsempfänger von Adresse X?", „Alle Lieferadressen unter Kunde Y?").
+2. **Hierarchie-Fragen beantwortet die Datenbank in einem Rutsch** — „Alle Vorfahren", „alle Nachkommen", Zyklusprüfung und Kaskaden-Deaktivieren sind rekursive Abfragen in der Datenbank statt vieler Einzelabfragen aus der Anwendung. Bleibt auch bei tiefen Hierarchien schnell.
+3. **Zyklen werden in der Datenbank verhindert** — Nicht nur die Auswahlliste blendet unzulässige Adressen aus; die Datenbank lehnt Zyklen auch bei gleichzeitigem Speichern oder direkten Schnittstellenaufrufen ab.
+4. **Kaskadierendes (De)Aktivieren ist ein einziger, unteilbarer Vorgang** — Bei einem Fehler bleibt alles unverändert („vollständig oder gar nicht"). Die zugehörigen Kontakte werden beim Deaktivieren automatisch mit deaktiviert, auch wenn der Nutzer sonst keine Kontakt-Rechte hat; dazu prüft der Server vorher ausdrücklich Zusatzrecht und Mandant.
+5. **Aktivieren/Deaktivieren als generisches Zusatzrecht** (Nutzerentscheidung) — Ein Schalter pro Maske im Rollen-Dialog statt einer vierten Zugriffsstufe. In PROJ-4 wird er nur bei Adressen angeboten; später lässt er sich pro Maske freischalten. Das bestehende Verhalten bei Artikeln ändert sich nicht.
+6. **Adressnummer wird vom Server zusammengesetzt, Eindeutigkeit von der Datenbank erzwungen** — Gleiches Muster wie bei der Artikelnummer. Der Vorschlag der nächsten freien Kennziffer ist eine Hilfsabfrage, kein Zähler; bei gleichzeitigem Anlegen entscheidet die Datenbank, der zweite Nutzer erhält „Adressnummer bereits vergeben".
+7. **Kürzel-Duplikate: Hinweis statt Sperre** — Eine Abfrage nennt beim Verlassen des Feldes (und beim Speichern) die Adresse(n), die das Kürzel schon nutzen, auch inaktive. Es gibt keine Datenbank-Sperre dafür.
+8. **Kontakte übergeordneter Adressen werden angezeigt, nicht kopiert** — Wechselt die übergeordnete Adresse, ändert sich die Anzeige sofort mit; es gibt keine doppelte Pflege. Diese Vorfahren-Kontakte sind im Reiter nur lesbar, bearbeitet wird an der eigenen Adresse.
+9. **Markeninhaber wird zur Adress-Auswahl; Matchcode-Neuberechnung bei Kürzeländerung** — Dieselbe Logik wie bei den bestehenden Merkmal-Kürzeln, jetzt mit der Adresse als Quelle. Deaktivierte Adressen bleiben am Artikel sichtbar (mit Kennzeichnung), erscheinen aber nicht mehr in neuen Auswahllisten.
+10. **Länder nutzen die vorhandene Merkmal-Pflege** — Kein neuer Bildschirm: Die Merkmal-Seite und ihre Schnittstellen werden um „Länder" erweitert. Rechte, Sperrverhalten, Deaktivieren-statt-Löschen und Mandantentrennung gelten unverändert.
+11. **Adress-Auswahlfeld lädt serverseitig und begrenzt Treffer** — Bei mehreren tausend Adressen darf die Auswahl nicht die ganze Liste laden. Das Feld sucht beim Tippen auf dem Server (z. B. nur aktive, bei Markeninhaber nur mit Kürzel).
+12. **Liste und Suche serverseitig mit Seitenwechsel und Suchindex** — Eine gemeinsame Suchzeile (Nummer, Name, Zusatz, Kürzel, GLN, Ort, PLZ) mit Suchindex; Filter Rolle, Status, Land wirken in der Abfrage, nicht im Browser.
+13. **Bearbeitungssperre aus PROJ-3 für Adressen und einzelne Kontakte** — Server prüft beim Speichern, dass der Nutzer die gültige Sperre hält. Das Kaskaden-(De)Aktivieren ändert nur den Status und wird durch Sperren von Unteradressen nicht blockiert; die gewählte Adresse selbst darf dabei nicht von jemand anderem gesperrt sein.
+14. **Reiter-Formular wie beim Artikel** — Ein Formular, ein Speichern, alle Reiter bleiben im Hintergrund erhalten; Reiter mit Fehlern werden markiert, beim Speichern Sprung zum ersten Fehler. Der Kontakt-Reiter hat eigene Dialoge mit eigener Sperre und eigenem Speichern (Kontakte sind eigene Datensätze).
+15. **Serverseitige Rechteprüfung + RLS wie in PROJ-2/3** — Jede Schreibaktion prüft Maskenrecht und Zugriffsstufe; für (De)Aktivieren zusätzlich das Zusatzrecht. Der Datenbank-Zugriffsschutz ist die zweite Ebene.
+16. **Einheitliche Schnittstellenstruktur** — Adressen, Kontakte und Länder folgen dem Muster von Artikeln/Merkmalen (Liste, Einzelabruf, Anlegen, Ändern, Status) unter dem Mandanten, plus gezielte Abfragen für Agenten (untergeordnete/übergeordnete Adressen, Kontakte inkl. Vorfahren, Rechnungsverweise).
+17. **Umsetzung als neue Migration** — Bestehende Migrationen bleiben unverändert; Markeninhaber-Tabelle, -Maske und -Zuordnungen werden dabei bereinigt.
+
+### D) Schnittstellen (Überblick, ohne Details)
+
+Alle unter dem Mandanten, Rechte pro Maske, deutsche Fehlermeldungen:
+- **Adressen:** Liste (Suche, Filter, Seitenwechsel), Einzelabruf, Anlegen, Ändern, Status ändern (mit Option „untergeordnete einbeziehen"), Vorschlag nächste freie Kennziffer, Kürzel-Duplikat prüfen, Auswahl-Suche (für Auswahlfelder), untergeordnete Adressen
+- **Kontakte:** Gesamtliste (Suche, Seitenwechsel), Kontakte einer Adresse inkl. Kontakte der Vorfahren, Anlegen, Ändern, Status ändern
+- **Länder:** über die bestehende Merkmal-Schnittstelle
+- **Bearbeitungssperre:** bestehende Schnittstelle, zwei neue Datensatztypen
+- **Rollen (PROJ-2):** Zusatzrecht „aktivieren/deaktivieren" je Maske lesen/schreiben
+- **Artikel (PROJ-3):** Markeninhaber verweist auf Adresse; Auswahlquelle ändert sich
+
+### E) Abhängigkeiten (Pakete)
+Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Command + Popover, Dialog, AlertDialog, Badge, Checkbox, Switch, Alert) sowie react-hook-form + zod reichen aus.
+
+### F) Auswirkungen auf bestehende Teile
+- **Datenbank:** neue Migration (Tabellen Adressen, Kontakte, Länder inkl. RLS; Hierarchie-Auswertungen, Zyklusschutz, unteilbares Kaskaden-(De)Aktivieren; Suchindex; Zusatzrecht-Feld an den Maskenrechten; Masken-Register + Standardrechte; Sperr-Datensatztypen; Umstellung Markeninhaber am Artikel inkl. Matchcode-Neuberechnung; Entfernen von Markeninhaber-Tabelle und -Rechten).
+- **PROJ-2:** Rollen-Dialog, Rollen-API und Rechteprüfung kennen das Zusatzrecht; bestehende Rollen bleiben unverändert (Zusatzrecht = Nein, Administrator = Ja für Adressen).
+- **PROJ-3:** Artikelformular/-API (Markeninhaber = Adress-Auswahl), Matchcode-Berechnung, Merkmal-Konfiguration ohne Markeninhaber, bestehende Tests anpassen.
+- **Frontend:** Adressliste, Adressmaske (5 Reiter), Kontakte-Gesamtliste, Kontakt-Dialog, Adress-Auswahlfeld, Länder-Konfiguration, Sidebar (+3 Einträge, −1), Rollen-Dialog (Schalter).
+- **Tests:** Adressnummer/Kennziffer, Hierarchie (Zyklus, Kaskade, Vorfahren-Kontakte), Rechte inkl. Zusatzrecht, Sperren, Mandantentrennung (inkl. SQL-RLS-Tests), Markeninhaber-Umstellung/Matchcode.
 
 ## QA Test Results
 _To be added by /qa_
