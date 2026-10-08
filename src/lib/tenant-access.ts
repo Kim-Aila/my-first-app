@@ -4,7 +4,9 @@ import { maskKey, type AccessLevel } from "@/lib/masks"
 import { MERKMALE } from "@/lib/merkmale"
 import type { SessionContext, TenantSummary } from "@/lib/session-context"
 
-type AccessSession = Pick<SessionContext, "isSuperAdmin" | "tenants" | "maskAccess">
+type AccessSession = Pick<SessionContext, "isSuperAdmin" | "tenants" | "maskAccess"> & {
+  maskToggle?: SessionContext["maskToggle"]
+}
 
 export function getAccessLevel(
   session: AccessSession,
@@ -13,6 +15,20 @@ export function getAccessLevel(
 ): AccessLevel | null {
   if (session.isSuperAdmin) return "write"
   return session.maskAccess[tenantId]?.[maskKey(mask)] ?? null
+}
+
+/**
+ * PROJ-4: Darf der User in der Maske aktivieren/deaktivieren? Braucht neben dem Zusatzrecht auch
+ * Schreibzugriff auf die Maske. Nur UI-Sichtbarkeit — der Server prüft es erneut.
+ */
+export function canToggleActive(
+  session: AccessSession,
+  tenantId: string,
+  mask: { module: string; maske: string }
+): boolean {
+  if (session.isSuperAdmin) return true
+  if (getAccessLevel(session, tenantId, mask) !== "write") return false
+  return session.maskToggle?.[tenantId]?.[maskKey(mask)] === true
 }
 
 /** Mandanten, in denen der User die Maske mindestens lesen darf. */

@@ -37,6 +37,12 @@ export interface SessionContext {
    * Super-Admins stehen hier nicht drin; sie haben überall "write" (siehe `getAccessLevel`).
    */
   maskAccess: Record<string, Record<string, AccessLevel>>
+  /**
+   * PROJ-4: Zusatzrecht "aktivieren/deaktivieren" je Mandant und Maske (Mandant-ID → Maskenschlüssel
+   * → true). Wirkt additiv über alle Rollen. Super-Admins stehen hier nicht drin (haben es überall,
+   * siehe `canToggleActive`).
+   */
+  maskToggle: Record<string, Record<string, boolean>>
 }
 
 interface UserRoleRow {
@@ -104,7 +110,9 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
     }
   }
 
-  const maskAccess = isSuperAdmin ? {} : await loadMaskAccess(supabase, user.id)
+  const { access: maskAccess, toggle: maskToggle } = isSuperAdmin
+    ? { access: {}, toggle: {} }
+    : await loadMaskAccess(supabase, user.id)
 
   return {
     userId: user.id,
@@ -114,47 +122,62 @@ export const getSessionContext = cache(async (): Promise<SessionContext> => {
     tenants,
     userAdminTenants,
     maskAccess,
+    maskToggle,
   }
 })
 
 interface AccessRoleRow {
   tenant_id: string
   roles: {
-    role_permissions: { module: string; maske: string; access_level?: string | null }[] | null
+    role_permissions:
+      | {
+          module: string
+          maske: string
+          access_level?: string | null
+          can_toggle_active?: boolean | null
+        }[]
+      | null
   } | null
 }
 
-// Best-Effort wie oben: Die Spalte `role_permissions.access_level` kommt erst mit /backend von
-// PROJ-3. Schlägt die Abfrage damit fehl, wird ohne Stufe erneut gelesen (alle Rechte = "write",
-// so verhält sich PROJ-2 bisher).
+// Best-Effort wie oben: Die Spalten `role_permissions.access_level` (PROJ-3) und
+// `can_toggle_active` (PROJ-4) kommen erst mit /backend. Fehlt eine Spalte, wird ohne sie erneut
+// gelesen (fehlende Stufe = "write", fehlendes Zusatzrecht = false).
 async function loadMaskAccess(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string
-): Promise<Record<string, Record<string, AccessLevel>>> {
+): Promise<{
+  access: Record<string, Record<string, AccessLevel>>
+  toggle: Record<string, Record<string, boolean>>
+}> {
+  const empty = { access: {}, toggle: {} }
   try {
-    let result = await supabase
-      .from("user_roles")
-      .select("tenant_id, roles(role_permissions(module, maske, access_level))")
-      .eq("user_id", userId)
-    if (result.error) {
-      result = await supabase
-        .from("user_roles")
-        .select("tenant_id, roles(role_permissions(module, maske))")
-        .eq("user_id", userId)
+    const attempts = [
+      "tenant_id, roles(role_permissions(module, maske, access_level, can_toggle_active))",
+      "tenant_id, roles(role_permissions(module, maske, access_level))",
+      "tenant_id, roles(role_permissions(module, maske))",
+    ]
+    let result: { data: unknown; error: unknown } | null = null
+    for (const columns of attempts) {
+      result = await supabase.from("user_roles").select(columns).eq("user_id", userId)
+      if (!result.error) break
     }
-    if (result.error || !result.data) return {}
+    if (!result || result.error || !result.data) return empty
 
     const access: Record<string, Record<string, AccessLevel>> = {}
+    const toggle: Record<string, Record<string, boolean>> = {}
     for (const row of result.data as unknown as AccessRoleRow[]) {
       const tenantAccess = (access[row.tenant_id] ??= {})
+      const tenantToggle = (toggle[row.tenant_id] ??= {})
       for (const permission of row.roles?.role_permissions ?? []) {
         const key = maskKey(permission)
         const level = normalizeAccessLevel(permission.access_level)
         if (tenantAccess[key] !== "write") tenantAccess[key] = level
+        if (permission.can_toggle_active === true) tenantToggle[key] = true
       }
     }
-    return access
+    return { access, toggle }
   } catch {
-    return {}
+    return empty
   }
 }

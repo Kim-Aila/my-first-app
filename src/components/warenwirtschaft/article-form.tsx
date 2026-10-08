@@ -22,6 +22,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AddressFieldLabel, AddressSelect } from "@/components/adressen/address-select"
 import { EditLockBanner } from "@/components/edit-lock/edit-lock-banner"
 import { PageHeader } from "@/components/page-header"
 import { StatusBadge } from "@/components/status-badge"
@@ -36,6 +37,7 @@ import { ReferenceLabel, ReferenceSelect } from "@/components/warenwirtschaft/re
 import type { MaintenanceAccess, ReferenceData } from "@/components/warenwirtschaft/types"
 import { useEditLock } from "@/hooks/use-edit-lock"
 import { apiRequest } from "@/lib/api-client"
+import type { AddressOption } from "@/lib/addresses"
 import {
   ARTICLE_LOCK_RESOURCE,
   ARTICLE_UNITS,
@@ -110,6 +112,10 @@ interface ArticleFormProps {
   article: Article | null
   references: ReferenceData
   maintenanceAccess: MaintenanceAccess
+  /** PROJ-4: Markeninhaber ist eine Adresse mit Kürzel; Kurzdaten der aktuell gewählten Adresse. */
+  brandOwner: AddressOption | null
+  /** User darf die Adressmaske öffnen (Link im Feld, Anlegen-Link im Leerhinweis). */
+  canOpenAddresses: boolean
   canWrite: boolean
   /** Fremde Sperre, die beim Laden der Seite bereits bestand. */
   lockedBy: LockHolder | null
@@ -118,7 +124,6 @@ interface ArticleFormProps {
 type ReferenceFieldName =
   | "articleTypeId"
   | "baseArticleId"
-  | "brandOwnerId"
   | "seasonId"
   | "formDesignId"
   | "packSizeId"
@@ -132,6 +137,8 @@ export function ArticleForm({
   article,
   references,
   maintenanceAccess,
+  brandOwner,
+  canOpenAddresses,
   canWrite,
   lockedBy,
 }: ArticleFormProps) {
@@ -144,6 +151,8 @@ export function ArticleForm({
   const [discardOpen, setDiscardOpen] = React.useState(false)
   const [statusOpen, setStatusOpen] = React.useState(false)
   const [statusBusy, setStatusBusy] = React.useState(false)
+  // Kurzdaten der gewählten Markeninhaber-Adresse (Anzeige im Feld + Kürzel für die Matchcode-Vorschau).
+  const [brandOwnerOption, setBrandOwnerOption] = React.useState<AddressOption | null>(brandOwner)
 
   const lock = useEditLock({
     tenantId,
@@ -169,7 +178,9 @@ export function ArticleForm({
   const typeItem = references.articleTypeId?.find((i) => i.id === watched.articleTypeId)
   const previewNumber = computeArticleNumber(watched.baseArticleNumber, watched.kennziffer)
   const articleNumber = isEditing ? previewNumber : (article?.articleNumber ?? previewNumber)
-  const codeOf = (key: "brandOwnerId" | "formDesignId" | "packSizeId" | "flavorId") => {
+  const brandOwnerCode =
+    brandOwnerOption && brandOwnerOption.id === watched.brandOwnerId ? brandOwnerOption.code : null
+  const codeOf = (key: "formDesignId" | "packSizeId" | "flavorId") => {
     const code = references[key]?.find((i) => i.id === watched[key])?.values.code
     return typeof code === "string" ? code : null
   }
@@ -177,7 +188,7 @@ export function ArticleForm({
     typeof item?.values.code === "string" ? item.values.code : null
   const previewMatchCode = computeMatchCode([
     codeOfItem(typeItem),
-    codeOf("brandOwnerId"),
+    brandOwnerCode,
     codeOfItem(seasonItem),
     codeOfItem(baseItem),
     codeOf("formDesignId"),
@@ -392,6 +403,42 @@ export function ArticleForm({
     )
   }
 
+  function renderBrandOwner() {
+    return (
+      <FormField
+        control={form.control}
+        name="brandOwnerId"
+        render={({ field }) => (
+          <FormItem className="flex flex-col">
+            <AddressFieldLabel
+              tenantId={tenantId}
+              selectedId={field.value}
+              canOpen={canOpenAddresses}
+            >
+              Markeninhaber
+            </AddressFieldLabel>
+            <FormControl>
+              <AddressSelect
+                tenantId={tenantId}
+                value={field.value}
+                selected={field.value && brandOwnerOption?.id === field.value ? brandOwnerOption : null}
+                onChange={(option) => {
+                  setBrandOwnerOption(option)
+                  field.onChange(option?.id ?? "")
+                }}
+                requireCode
+                disabled={fieldsDisabled}
+                emptyText="Noch keine Adresse mit Kürzel –"
+                canOpenAddresses={canOpenAddresses}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    )
+  }
+
   function prefillCustomsTariff(baseId: string) {
     const base = references.baseArticleId?.find((i) => i.id === baseId)
     const tariff = base?.values.customsTariffNumber
@@ -581,7 +628,7 @@ export function ArticleForm({
 
               <Section id="klassifizierung">
                 <div className="grid gap-4 md:grid-cols-2">
-                  {renderReference("brandOwnerId")}
+                  {renderBrandOwner()}
                   {renderReference("seasonId")}
                   {renderReference("baseArticleId", { onPick: prefillCustomsTariff })}
                   {renderReference("formDesignId")}

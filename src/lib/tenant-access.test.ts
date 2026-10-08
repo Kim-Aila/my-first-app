@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest"
 
-import { MASK_ARTIKELSTAMM, MASK_MERKMAL_SAISON } from "./masks"
-import { getAccessLevel, maintenanceAccessFor, resolveTenant, tenantsWithMask } from "./tenant-access"
+import { MASK_ADRESSEN, MASK_ARTIKELSTAMM, MASK_MERKMAL_SAISON } from "./masks"
+import {
+  canToggleActive,
+  getAccessLevel,
+  maintenanceAccessFor,
+  resolveTenant,
+  tenantsWithMask,
+} from "./tenant-access"
 
 const tenants = [
   { id: "t1", name: "Amstiel" },
@@ -43,6 +49,39 @@ describe("tenant access helpers", () => {
       "t1"
     )
     expect(access.saisons).toBe(true)
-    expect(access.markeninhaber).toBe(false)
+    expect(access.formDesign).toBeUndefined()
+    expect(access["form-design"]).toBe(false)
+  })
+
+  it("includes the Länder maintenance mask", () => {
+    const access = maintenanceAccessFor(
+      { ...user, maskAccess: { t1: { "warenwirtschaft:merkmal_laender": "read" as const } } },
+      "t1"
+    )
+    expect(access.laender).toBe(true)
+  })
+})
+
+describe("canToggleActive", () => {
+  const withRights = (level: "read" | "write", toggle: boolean | undefined) => ({
+    isSuperAdmin: false,
+    tenants,
+    maskAccess: { t1: { "warenwirtschaft:adressen": level } },
+    maskToggle: toggle === undefined ? undefined : { t1: { "warenwirtschaft:adressen": toggle } },
+  })
+
+  it("needs write access plus the additional right", () => {
+    expect(canToggleActive(withRights("write", true), "t1", MASK_ADRESSEN)).toBe(true)
+    expect(canToggleActive(withRights("write", false), "t1", MASK_ADRESSEN)).toBe(false)
+    expect(canToggleActive(withRights("write", undefined), "t1", MASK_ADRESSEN)).toBe(false)
+  })
+
+  it("is not granted with read access only, even if the flag is set", () => {
+    expect(canToggleActive(withRights("read", true), "t1", MASK_ADRESSEN)).toBe(false)
+  })
+
+  it("does not carry over to other tenants and always applies to super admins", () => {
+    expect(canToggleActive(withRights("write", true), "t2", MASK_ADRESSEN)).toBe(false)
+    expect(canToggleActive({ isSuperAdmin: true, tenants, maskAccess: {} }, "t2", MASK_ADRESSEN)).toBe(true)
   })
 })

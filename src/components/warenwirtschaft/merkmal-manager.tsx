@@ -46,7 +46,7 @@ interface MerkmalManagerProps {
   canWrite: boolean
 }
 
-/** Eine Pflege-Oberfläche für alle 9 Merkmal-Tabellen, gesteuert über `MerkmalConfig`. */
+/** Eine Pflege-Oberfläche für alle Merkmal-Tabellen, gesteuert über `MerkmalConfig`. */
 export function MerkmalManager({
   config,
   tenantId,
@@ -138,7 +138,9 @@ export function MerkmalManager({
           title={`Noch keine Einträge – ${config.plural}`}
           description={
             canWrite
-              ? "Lege den ersten Eintrag an, damit er im Artikelformular auswählbar ist."
+              ? config.scope === "adressen"
+                ? "Lege den ersten Eintrag an, damit er im Adressformular auswählbar ist."
+                : "Lege den ersten Eintrag an, damit er im Artikelformular auswählbar ist."
               : "In diesem Mandanten wurden noch keine Einträge angelegt."
           }
           action={
@@ -237,7 +239,7 @@ export function MerkmalManager({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {statusItem?.isActive
-                ? "Der Eintrag erscheint nicht mehr in neuen Auswahllisten. Artikel, die ihn bereits verwenden, behalten ihn. Einträge werden nie gelöscht."
+                ? "Der Eintrag erscheint nicht mehr in neuen Auswahllisten. Datensätze, die ihn bereits verwenden, behalten ihn. Einträge werden nie gelöscht."
                 : "Der Eintrag steht wieder in Auswahllisten zur Verfügung."}
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -54,7 +54,7 @@ export default async function MerkmalPage({
     <>
       <PageHeader
         title={config.plural}
-        description={`Merkmal-Tabelle für den Artikelstamm des Mandanten „${tenant.name}“`}
+        description={`Merkmal-Tabelle für den ${config.scope === "adressen" ? "Adressstamm" : "Artikelstamm"} des Mandanten „${tenant.name}“`}
         actions={
           tenants.length > 1 ? (
             <TenantSelector tenants={tenants} selectedTenantId={tenant.id} />

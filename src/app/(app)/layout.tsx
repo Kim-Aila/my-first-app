@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-provider"
-import { MASK_ARTIKELSTAMM } from "@/lib/masks"
+import { MASK_ADRESSEN, MASK_ARTIKELSTAMM, MASK_KONTAKTE } from "@/lib/masks"
 import { MERKMALE, merkmalHref } from "@/lib/merkmale"
 import { getSessionContext } from "@/lib/session-context"
 import { tenantsWithMask } from "@/lib/tenant-access"
@@ -19,6 +19,8 @@ export default async function AppLayout({
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
   const canViewArticles = tenantsWithMask(session, MASK_ARTIKELSTAMM).length > 0
+  const canViewAddresses = tenantsWithMask(session, MASK_ADRESSEN).length > 0
+  const canViewContacts = tenantsWithMask(session, MASK_KONTAKTE).length > 0
   const merkmalItems = MERKMALE.filter((m) => tenantsWithMask(session, m.mask).length > 0).map(
     (m) => ({ title: m.plural, href: merkmalHref(m) })
   )
@@ -31,6 +33,8 @@ export default async function AppLayout({
           isSuperAdmin={session.isSuperAdmin}
           canManageUsers={session.userAdminTenants.length > 0}
           canViewArticles={canViewArticles}
+          canViewAddresses={canViewAddresses}
+          canViewContacts={canViewContacts}
           merkmalItems={merkmalItems}
         />
         <SidebarInset>

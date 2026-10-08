@@ -3,8 +3,9 @@ import type { Metadata } from "next"
 import { PageHeader } from "@/components/page-header"
 import { LoadErrorAlert, NoAccessCard } from "@/components/state-messages"
 import { ArticleForm } from "@/components/warenwirtschaft/article-form"
+import { loadAddressOptions } from "@/lib/address-data"
 import { loadReferences } from "@/lib/article-data"
-import { MASK_ARTIKELSTAMM } from "@/lib/masks"
+import { MASK_ADRESSEN, MASK_ARTIKELSTAMM } from "@/lib/masks"
 import { getSessionContext } from "@/lib/session-context"
 import { createClient as createServerClient } from "@/lib/supabase-server"
 import {
@@ -51,6 +52,8 @@ export default async function NeuerArtikelPage({
       article={null}
       references={references}
       maintenanceAccess={maintenanceAccessFor(session, tenant.id)}
+      brandOwner={null}
+      canOpenAddresses={getAccessLevel(session, tenant.id, MASK_ADRESSEN) !== null}
       canWrite
       lockedBy={null}
     />

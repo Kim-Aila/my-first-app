@@ -1,4 +1,4 @@
-// Konfiguration der 10 Merkmal-Tabellen des Artikelstamms (PROJ-3).
+// Konfiguration der Merkmal-Tabellen: 9 des Artikelstamms (PROJ-3) + Länder des Adressstamms (PROJ-4).
 // Eine einzige Pflege-Oberfläche (`MerkmalManager`) wird je Tabelle über diese Konfiguration
 // gesteuert; Artikelformular und Auswahlfelder lesen Bezeichnungen/Links ebenfalls von hier.
 import { z } from "zod"
@@ -9,7 +9,7 @@ import {
   MASK_MERKMAL_BASISARTIKEL,
   MASK_MERKMAL_FORM_DESIGN,
   MASK_MERKMAL_GESCHMACKSSORTE,
-  MASK_MERKMAL_MARKENINHABER,
+  MASK_MERKMAL_LAENDER,
   MASK_MERKMAL_MWST,
   MASK_MERKMAL_PACKUNGSGROESSE,
   MASK_MERKMAL_PALETTENKLASSE,
@@ -18,7 +18,8 @@ import {
   type MaskDefinition,
 } from "@/lib/masks"
 
-export type MerkmalFieldKind = "text" | "digit" | "decimal"
+/** "letters": 2–3 Buchstaben, werden automatisch in Großbuchstaben gewandelt (Länderkürzel). */
+export type MerkmalFieldKind = "text" | "digit" | "decimal" | "letters"
 
 export interface MerkmalField {
   /** Schlüssel in der API (camelCase). */
@@ -44,6 +45,8 @@ export interface MerkmalConfig {
   singular: string
   plural: string
   mask: MaskDefinition
+  /** Zu welchem Stamm die Tabelle gehört: bestimmt Beschreibungstexte und Ladeumfang im Artikelformular. */
+  scope: "artikel" | "adressen"
   fields: MerkmalField[]
   /** Spalte, nach der die Liste sortiert wird. */
   sortColumn: string
@@ -89,17 +92,8 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Artikeltyp",
     plural: "Artikeltypen",
     mask: MASK_MERKMAL_ARTIKELTYP,
+    scope: "artikel",
     fields: [CODE_FIELD, NAME_FIELD, COMMODITY_DIGIT_FIELD],
-    sortColumn: "code",
-  },
-  {
-    slug: "markeninhaber",
-    table: "brand_owners",
-    articleKey: "brandOwnerId",
-    singular: "Markeninhaber",
-    plural: "Markeninhaber",
-    mask: MASK_MERKMAL_MARKENINHABER,
-    fields: [CODE_FIELD, NAME_FIELD],
     sortColumn: "code",
   },
   {
@@ -109,6 +103,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Saison",
     plural: "Saisons",
     mask: MASK_MERKMAL_SAISON,
+    scope: "artikel",
     fields: [CODE_FIELD, NAME_FIELD, COMMODITY_DIGIT_FIELD],
     sortColumn: "code",
   },
@@ -119,6 +114,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Basisartikel",
     plural: "Basisartikel",
     mask: MASK_MERKMAL_BASISARTIKEL,
+    scope: "artikel",
     fields: [
       { ...CODE_FIELD, maxLength: 30, hint: "Wird Teil des Matchcodes der Artikel." },
       NAME_FIELD,
@@ -141,6 +137,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Form/Design",
     plural: "Form/Design",
     mask: MASK_MERKMAL_FORM_DESIGN,
+    scope: "artikel",
     fields: [CODE_FIELD, NAME_FIELD],
     sortColumn: "code",
   },
@@ -151,6 +148,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Packungsgröße",
     plural: "Packungsgrößen",
     mask: MASK_MERKMAL_PACKUNGSGROESSE,
+    scope: "artikel",
     fields: [CODE_FIELD, NAME_FIELD],
     sortColumn: "code",
   },
@@ -161,6 +159,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Geschmackssorte",
     plural: "Geschmackssorten",
     mask: MASK_MERKMAL_GESCHMACKSSORTE,
+    scope: "artikel",
     fields: [CODE_FIELD, NAME_FIELD],
     sortColumn: "code",
   },
@@ -171,6 +170,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Mehrwertsteuersatz",
     plural: "Mehrwertsteuersätze",
     mask: MASK_MERKMAL_MWST,
+    scope: "artikel",
     fields: [
       {
         key: "ratePercent",
@@ -191,6 +191,7 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Verpackungsgruppe",
     plural: "Verpackungsgruppen",
     mask: MASK_MERKMAL_VERPACKUNGSGRUPPE,
+    scope: "artikel",
     fields: [
       NAME_FIELD,
       weightField("foilSystemWeight", "foil_system_weight", "Folie Systembeteiligung"),
@@ -207,10 +208,43 @@ export const MERKMALE: MerkmalConfig[] = [
     singular: "Palettenklasse",
     plural: "Palettenklassen",
     mask: MASK_MERKMAL_PALETTENKLASSE,
+    scope: "artikel",
     fields: [{ ...CODE_FIELD, label: "Klasse", hint: "Z. B. „A“; wird am Artikel ausgewählt." }],
     sortColumn: "code",
   },
+  {
+    slug: "laender",
+    table: "countries",
+    articleKey: "countryId",
+    singular: "Land",
+    plural: "Länder",
+    mask: MASK_MERKMAL_LAENDER,
+    scope: "adressen",
+    fields: [
+      {
+        key: "name",
+        column: "name",
+        label: "Land",
+        kind: "text",
+        required: true,
+        maxLength: 100,
+      },
+      {
+        key: "code",
+        column: "code",
+        label: "Länderkürzel",
+        kind: "letters",
+        required: true,
+        maxLength: 3,
+        hint: "2 bis 3 Buchstaben, z. B. DE oder VAE; wird automatisch in Großbuchstaben gespeichert.",
+      },
+    ],
+    sortColumn: "name",
+  },
 ]
+
+/** Merkmal-Tabellen des Artikelstamms (Verweisfelder des Artikelformulars). */
+export const ARTICLE_MERKMALE = MERKMALE.filter((m) => m.scope === "artikel")
 
 export function getMerkmalConfig(slug: string): MerkmalConfig | undefined {
   return MERKMALE.find((m) => m.slug === slug)
@@ -240,7 +274,7 @@ export function rowToMerkmalItem(config: MerkmalConfig, row: Record<string, unkn
   for (const field of config.fields) {
     const raw = row[field.column]
     if (raw === null || raw === undefined) values[field.key] = null
-    else if (field.kind === "text") values[field.key] = String(raw)
+    else if (field.kind === "text" || field.kind === "letters") values[field.key] = String(raw)
     else values[field.key] = Number(raw)
   }
   return { id: String(row.id), isActive: row.is_active !== false, values }
@@ -260,6 +294,7 @@ export function merkmalLabel(config: MerkmalConfig, item: MerkmalItem): string {
       typeof rate === "number" ? rate.toLocaleString("de-DE", { maximumFractionDigits: 2 }) : "?"
     return name ? `${formatted} % – ${name}` : `${formatted} %`
   }
+  if (config.slug === "laender") return code && name ? `${name} (${code})` : String(name ?? code ?? "–")
   if (code && name) return `${code} – ${name}`
   return String(name ?? code ?? "–")
 }
@@ -291,6 +326,9 @@ export function buildMerkmalSchema(config: MerkmalConfig) {
         if (field.required) ctx.addIssue({ code: "custom", message: `Bitte ${label} angeben` })
         return
       }
+      if (field.kind === "letters" && !/^\p{L}{2,3}$/u.test(value)) {
+        ctx.addIssue({ code: "custom", message: "Bitte 2 bis 3 Buchstaben angeben (keine Ziffern)" })
+      }
       if (field.kind === "digit" && !/^\d$/.test(value)) {
         ctx.addIssue({ code: "custom", message: "Bitte eine einzelne Ziffer von 0 bis 9 angeben" })
       }
@@ -318,6 +356,7 @@ export function merkmalPayload(config: MerkmalConfig, values: MerkmalFormValues)
   for (const field of config.fields) {
     const value = (values[field.key] ?? "").trim()
     if (field.kind === "text") payload[field.key] = value === "" ? null : value
+    else if (field.kind === "letters") payload[field.key] = value === "" ? null : value.toUpperCase()
     else if (field.kind === "digit") payload[field.key] = value === "" ? null : Number(value)
     else payload[field.key] = parseDecimalInput(value)
   }

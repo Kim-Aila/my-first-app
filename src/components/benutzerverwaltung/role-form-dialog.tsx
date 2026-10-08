@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -45,6 +46,8 @@ const roleSchema = z.object({
     .max(100, "Der Rollenname darf höchstens 100 Zeichen lang sein"),
   // Maskenschlüssel → Zugriffsstufe ("none" = kein Zugriff)
   masks: z.record(z.string(), z.enum(["none", "read", "write"])),
+  // Maskenschlüssel → Zusatzrecht "darf aktivieren/deaktivieren" (nur Masken mit `supportsActivation`)
+  toggles: z.record(z.string(), z.boolean()),
 })
 
 type RoleValues = z.infer<typeof roleSchema>
@@ -61,11 +64,13 @@ interface RoleFormDialogProps {
 
 function valuesFor(role: TenantRole | null): RoleValues {
   const masks: RoleValues["masks"] = {}
+  const toggles: RoleValues["toggles"] = {}
   for (const mask of MASKS) {
     const permission = role?.masks.find((m) => maskKey(m) === maskKey(mask))
     masks[maskKey(mask)] = permission ? permission.accessLevel : "none"
+    if (mask.supportsActivation) toggles[maskKey(mask)] = permission?.canToggleActive === true
   }
-  return { name: role?.name ?? "", masks }
+  return { name: role?.name ?? "", masks, toggles }
 }
 
 export function RoleFormDialog({
@@ -137,6 +142,7 @@ function RoleForm({
     resolver: zodResolver(roleSchema),
     defaultValues: valuesFor(role),
   })
+  const toggles = form.watch("toggles")
 
   async function onSubmit(values: RoleValues) {
     setError(null)
@@ -159,6 +165,13 @@ function RoleForm({
       maske: m.maske,
       // Masken ohne Lese-Stufe (Benutzerverwaltung) kennen nur "Zugriff" = "write".
       accessLevel: (m.supportsReadOnly ? values.masks[maskKey(m)] : "write") as AccessLevel,
+      // Zusatzrecht gilt nur zusammen mit Schreibzugriff.
+      ...(m.supportsActivation
+        ? {
+            canToggleActive:
+              values.masks[maskKey(m)] === "write" && values.toggles[maskKey(m)] === true,
+          }
+        : {}),
     }))
 
     setLoading(true)
@@ -228,40 +241,64 @@ function RoleForm({
                         const id = `role-mask-${key.replace(/[^a-z0-9]/gi, "-")}`
                         const value = field.value[key] ?? "none"
                         return (
-                          <div
-                            key={key}
-                            className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-                          >
-                            <div className="grid gap-0.5">
-                              <Label htmlFor={id}>{mask.label}</Label>
-                              <p id={`${id}-desc`} className="text-xs text-muted-foreground">
-                                {mask.description}
-                              </p>
-                            </div>
-                            <Select
-                              value={value}
-                              disabled={loading}
-                              onValueChange={(next) => field.onChange({ ...field.value, [key]: next })}
-                            >
-                              <SelectTrigger
-                                id={id}
-                                aria-describedby={`${id}-desc`}
-                                className="w-full sm:w-52"
+                          <div key={key} className="space-y-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="grid gap-0.5">
+                                <Label htmlFor={id}>{mask.label}</Label>
+                                <p id={`${id}-desc`} className="text-xs text-muted-foreground">
+                                  {mask.description}
+                                </p>
+                              </div>
+                              <Select
+                                value={value}
+                                disabled={loading}
+                                onValueChange={(next) =>
+                                  field.onChange({ ...field.value, [key]: next })
+                                }
                               >
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Kein Zugriff</SelectItem>
-                                {mask.supportsReadOnly ? (
-                                  <>
-                                    <SelectItem value="read">{ACCESS_LEVEL_LABELS.read}</SelectItem>
-                                    <SelectItem value="write">{ACCESS_LEVEL_LABELS.write}</SelectItem>
-                                  </>
-                                ) : (
-                                  <SelectItem value="write">Zugriff</SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
+                                <SelectTrigger
+                                  id={id}
+                                  aria-describedby={`${id}-desc`}
+                                  className="w-full sm:w-52"
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Kein Zugriff</SelectItem>
+                                  {mask.supportsReadOnly ? (
+                                    <>
+                                      <SelectItem value="read">{ACCESS_LEVEL_LABELS.read}</SelectItem>
+                                      <SelectItem value="write">{ACCESS_LEVEL_LABELS.write}</SelectItem>
+                                    </>
+                                  ) : (
+                                    <SelectItem value="write">Zugriff</SelectItem>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {mask.supportsActivation && (
+                              <div className="flex items-center justify-between gap-3 rounded-md bg-secondary/50 px-3 py-2 sm:ml-4">
+                                <Label
+                                  htmlFor={`${id}-toggle`}
+                                  className="text-sm font-normal leading-snug"
+                                >
+                                  Darf {mask.label} aktivieren/deaktivieren
+                                  <span className="block text-xs text-muted-foreground">
+                                    {value === "write"
+                                      ? "Zusatzrecht zum Stilllegen und Reaktivieren."
+                                      : "Nur mit „Lesen + Bearbeiten“ möglich."}
+                                  </span>
+                                </Label>
+                                <Switch
+                                  id={`${id}-toggle`}
+                                  checked={value === "write" && toggles[key] === true}
+                                  disabled={loading || value !== "write"}
+                                  onCheckedChange={(next) =>
+                                    form.setValue("toggles", { ...toggles, [key]: next }, { shouldDirty: true })
+                                  }
+                                />
+                              </div>
+                            )}
                           </div>
                         )
                       })}

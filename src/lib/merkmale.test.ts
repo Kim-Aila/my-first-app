@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { MASKS, maskKey } from "./masks"
 import {
+  ARTICLE_MERKMALE,
   MERKMALE,
   buildMerkmalSchema,
   getMerkmalConfig,
@@ -11,11 +12,22 @@ import {
 } from "./merkmale"
 
 describe("MERKMALE registry", () => {
-  it("has the 10 Merkmal tables with unique slugs, tables and article keys", () => {
+  it("has the 9 article Merkmal tables plus Länder with unique slugs, tables and keys", () => {
     expect(MERKMALE).toHaveLength(10)
+    expect(ARTICLE_MERKMALE).toHaveLength(9)
     for (const key of ["slug", "table", "articleKey"] as const) {
       expect(new Set(MERKMALE.map((m) => m[key])).size).toBe(10)
     }
+  })
+
+  it("no longer offers Markeninhaber as a Merkmal table (it is an address now)", () => {
+    expect(getMerkmalConfig("markeninhaber")).toBeUndefined()
+    expect(MERKMALE.some((m) => m.articleKey === "brandOwnerId")).toBe(false)
+  })
+
+  it("keeps Länder out of the article references", () => {
+    expect(getMerkmalConfig("laender")?.scope).toBe("adressen")
+    expect(ARTICLE_MERKMALE.map((m) => m.slug)).not.toContain("laender")
   })
 
   it("registers one mask per Merkmal table", () => {
@@ -88,5 +100,36 @@ describe("merkmalPayload / rowToMerkmalItem / merkmalLabel", () => {
     const vatItem = rowToMerkmalItem(vat, { id: "v1", rate_percent: 19, name: "Regelsatz", is_active: false })
     expect(vatItem.isActive).toBe(false)
     expect(merkmalLabel(vat, vatItem)).toBe("19 % – Regelsatz")
+  })
+})
+
+describe("Länder (Merkmal-Tabelle des Adressstamms)", () => {
+  const config = getMerkmalConfig("laender")!
+  const schema = buildMerkmalSchema(config)
+
+  it("accepts 2 to 3 letters as Länderkürzel", () => {
+    expect(schema.safeParse({ name: "Deutschland", code: "DE" }).success).toBe(true)
+    expect(schema.safeParse({ name: "Vereinigte Arabische Emirate", code: "VAE" }).success).toBe(true)
+    expect(schema.safeParse({ name: "Vereinigte Arabische Emirate", code: "ae" }).success).toBe(true)
+  })
+
+  it.each(["D", "DEUT", "D1", "12", ""])("rejects the Länderkürzel %j", (code) => {
+    expect(schema.safeParse({ name: "Deutschland", code }).success).toBe(false)
+  })
+
+  it("requires the country name", () => {
+    expect(schema.safeParse({ name: "", code: "DE" }).success).toBe(false)
+  })
+
+  it("sends the Länderkürzel in capital letters", () => {
+    expect(merkmalPayload(config, { name: "Österreich", code: "at" })).toEqual({
+      name: "Österreich",
+      code: "AT",
+    })
+  })
+
+  it("labels a country as name plus Kürzel", () => {
+    const item = rowToMerkmalItem(config, { id: "1", is_active: true, name: "Deutschland", code: "DE" })
+    expect(merkmalLabel(config, item)).toBe("Deutschland (DE)")
   })
 })

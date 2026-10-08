@@ -22,6 +22,12 @@ export interface MaskDefinition {
   group: string
   /** false → nur "Kein Zugriff" / "Zugriff" (Stufe immer "write"). */
   supportsReadOnly: boolean
+  /**
+   * PROJ-4: Die Maske kennt das Zusatzrecht "Darf aktivieren/deaktivieren" (Schalter im
+   * Rollen-Dialog, nur sinnvoll bei Stufe "write"). Derzeit nur Adressen; weitere Masken schalten
+   * es später einfach hier frei.
+   */
+  supportsActivation?: boolean
 }
 
 export const MASK_BENUTZERVERWALTUNG: MaskDefinition = {
@@ -61,11 +67,6 @@ export const MASK_MERKMAL_ARTIKELTYP = merkmalMask(
   "Artikeltypen",
   "Rohstoff, Verpackung, Halbfertigware, Fertigware u. a. pflegen"
 )
-export const MASK_MERKMAL_MARKENINHABER = merkmalMask(
-  "merkmal_markeninhaber",
-  "Markeninhaber",
-  "Markeninhaber pflegen"
-)
 export const MASK_MERKMAL_SAISON = merkmalMask("merkmal_saison", "Saisons", "Saisons pflegen")
 export const MASK_MERKMAL_BASISARTIKEL = merkmalMask(
   "merkmal_basisartikel",
@@ -103,11 +104,33 @@ export const MASK_MERKMAL_PALETTENKLASSE = merkmalMask(
   "Palettenklassen pflegen"
 )
 
+// PROJ-4: Adressstamm. "Länder" ist eine Merkmal-Tabelle des Adressstamms, steht aber wie die
+// Artikel-Merkmale in der Gruppe "Warenwirtschaft – Merkmale".
+export const MASK_ADRESSEN: MaskDefinition = {
+  module: "warenwirtschaft",
+  maske: "adressen",
+  label: "Adressen",
+  description: "Kunden, Lieferanten und weitere Geschäftspartner ansehen, anlegen und bearbeiten",
+  group: WAREN,
+  supportsReadOnly: true,
+  supportsActivation: true,
+}
+export const MASK_KONTAKTE: MaskDefinition = {
+  module: "warenwirtschaft",
+  maske: "kontakte",
+  label: "Kontakte",
+  description: "Ansprechpartner der Adressen ansehen, anlegen und bearbeiten",
+  group: WAREN,
+  supportsReadOnly: true,
+}
+export const MASK_MERKMAL_LAENDER = merkmalMask("merkmal_laender", "Länder", "Länder pflegen")
+
 export const MASKS: MaskDefinition[] = [
   MASK_BENUTZERVERWALTUNG,
   MASK_ARTIKELSTAMM,
+  MASK_ADRESSEN,
+  MASK_KONTAKTE,
   MASK_MERKMAL_ARTIKELTYP,
-  MASK_MERKMAL_MARKENINHABER,
   MASK_MERKMAL_SAISON,
   MASK_MERKMAL_BASISARTIKEL,
   MASK_MERKMAL_FORM_DESIGN,
@@ -116,6 +139,7 @@ export const MASKS: MaskDefinition[] = [
   MASK_MERKMAL_MWST,
   MASK_MERKMAL_VERPACKUNGSGRUPPE,
   MASK_MERKMAL_PALETTENKLASSE,
+  MASK_MERKMAL_LAENDER,
 ]
 
 export function maskKey(mask: { module: string; maske: string }) {
@@ -131,6 +155,8 @@ export interface MaskPermission {
   module: string
   maske: string
   accessLevel: AccessLevel
+  /** PROJ-4: Zusatzrecht "aktivieren/deaktivieren" (fehlt in älteren Daten → false). */
+  canToggleActive?: boolean
 }
 
 export function normalizeAccessLevel(value: unknown): AccessLevel {

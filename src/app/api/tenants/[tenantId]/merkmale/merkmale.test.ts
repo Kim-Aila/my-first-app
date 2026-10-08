@@ -138,7 +138,7 @@ describe("POST /api/tenants/:tenantId/merkmale/:slug", () => {
     ["verpackungsgruppen", { name: "Karton", cardboardSystemWeight: "x" }, "cardboardSystemWeight"],
     ["palettenklassen", { code: "" }, "code"],
     ["palettenklassen", { code: "x".repeat(21) }, "code"],
-    ["markeninhaber", { code: "x".repeat(21), name: "y" }, "code"],
+    ["geschmackssorten", { code: "x".repeat(21), name: "y" }, "code"],
   ])("returns 400 with the field for invalid %s input", async (slug, body, field) => {
     asWriter()
     const res = await post(slug, body)

@@ -33,7 +33,14 @@ interface UserRoleRow {
 interface RoleRow {
   id: string
   name: string
-  role_permissions: { module: string; maske: string; access_level?: string | null }[] | null
+  role_permissions:
+    | {
+        module: string
+        maske: string
+        access_level?: string | null
+        can_toggle_active?: boolean | null
+      }[]
+    | null
 }
 
 export default async function BenutzerverwaltungPage({
@@ -70,7 +77,14 @@ export default async function BenutzerverwaltungPage({
   // angelegt. Bis dahin schlagen diese Abfragen fehl → Fehlerzustand statt Absturz.
   // `role_permissions.access_level` (PROJ-3) fehlt bis zur Migration → dann ohne Stufe lesen
   // (alle Rechte gelten als "Lesen + Bearbeiten", wie bisher).
+  // `role_permissions.can_toggle_active` (PROJ-4) ebenso (fehlt → Zusatzrecht = Nein).
   async function loadRoles() {
+    const withToggle = await supabase
+      .from("roles")
+      .select("id, name, role_permissions(module, maske, access_level, can_toggle_active)")
+      .eq("tenant_id", tenant.id)
+      .order("name", { ascending: true })
+    if (!withToggle.error) return withToggle
     const withLevel = await supabase
       .from("roles")
       .select("id, name, role_permissions(module, maske, access_level)")
@@ -125,6 +139,7 @@ export default async function BenutzerverwaltungPage({
       module: p.module,
       maske: p.maske,
       accessLevel: normalizeAccessLevel(p.access_level),
+      canToggleActive: p.can_toggle_active === true,
     })),
     userCount: userCountByRole.get(row.id) ?? 0,
   }))

@@ -167,6 +167,11 @@ function MerkmalForm({
                 <FormControl>
                   <Input
                     {...rhf}
+                    onChange={(event) =>
+                      rhf.onChange(
+                        field.kind === "letters" ? event.target.value.toUpperCase() : event.target.value
+                      )
+                    }
                     autoComplete="off"
                     autoFocus={index === 0}
                     disabled={loading}

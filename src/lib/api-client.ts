@@ -49,3 +49,36 @@ export async function apiRequest<T = unknown>(
     field: typeof payload.field === "string" ? payload.field : undefined,
   }
 }
+
+/** Lesender Aufruf aus Client Components (z. B. Auswahlsuche, Kontakte, Vorschläge). */
+export async function apiGet<T = unknown>(url: string, signal?: AbortSignal): Promise<ApiResult<T>> {
+  let res: Response
+  try {
+    res = await fetch(url, { method: "GET", signal, cache: "no-store" })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error
+    return { ok: false, status: 0, error: CONNECTION_ERROR_MESSAGE }
+  }
+
+  let data: unknown = null
+  try {
+    data = await res.json()
+  } catch {
+    data = null
+  }
+
+  if (res.ok) return { ok: true, data: data as T }
+
+  const payload = (data ?? {}) as { error?: unknown; field?: unknown }
+  return {
+    ok: false,
+    status: res.status,
+    error:
+      typeof payload.error === "string" && payload.error.length > 0
+        ? payload.error
+        : res.status === 403
+          ? "Dafür fehlt dir die Berechtigung."
+          : "Die Daten konnten nicht geladen werden. Bitte versuche es erneut.",
+    field: typeof payload.field === "string" ? payload.field : undefined,
+  }
+}

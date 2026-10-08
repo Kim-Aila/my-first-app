@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState, LoadErrorAlert, NoAccessCard } from "@/components/state-messages"
 import { ArticleForm } from "@/components/warenwirtschaft/article-form"
+import { loadAddressOptions } from "@/lib/address-data"
 import { loadForeignArticleLock, loadReferences } from "@/lib/article-data"
 import { ARTICLE_COLUMNS, rowToArticle } from "@/lib/articles"
-import { MASK_ARTIKELSTAMM } from "@/lib/masks"
+import { MASK_ADRESSEN, MASK_ARTIKELSTAMM } from "@/lib/masks"
 import { getSessionContext } from "@/lib/session-context"
 import { createClient as createServerClient } from "@/lib/supabase-server"
 import {
@@ -81,6 +82,11 @@ export default async function ArtikelDetailPage({
   }
 
   const article = rowToArticle(articleResult.data as unknown as Record<string, unknown>)
+  // Markeninhaber ist eine Adresse (PROJ-4); best effort, damit die Artikelmaske auch ohne Treffer lädt.
+  const brandOwnerId = article.values.brandOwnerId
+  const brandOwner = brandOwnerId
+    ? ((await loadAddressOptions(supabase, tenant.id, [brandOwnerId]))[brandOwnerId] ?? null)
+    : null
 
   return (
     <ArticleForm
@@ -90,6 +96,8 @@ export default async function ArtikelDetailPage({
       article={article}
       references={referenceResult.references}
       maintenanceAccess={maintenanceAccessFor(session, tenant.id)}
+      brandOwner={brandOwner}
+      canOpenAddresses={getAccessLevel(session, tenant.id, MASK_ADRESSEN) !== null}
       canWrite={canWrite}
       lockedBy={lockedBy}
     />

@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { ReferenceData } from "@/components/warenwirtschaft/types"
 import { ARTICLE_LOCK_RESOURCE } from "@/lib/articles"
 import type { LockHolder } from "@/lib/edit-lock"
-import { MERKMALE, rowToMerkmalItem, selectColumns } from "@/lib/merkmale"
+import { ARTICLE_MERKMALE, rowToMerkmalItem, selectColumns } from "@/lib/merkmale"
 
 /** Alle Merkmal-Einträge des Mandanten (aktive und inaktive), je Verweisfeld des Artikels. */
 export async function loadReferences(
@@ -14,7 +14,7 @@ export async function loadReferences(
   tenantId: string
 ): Promise<{ references: ReferenceData; failed: boolean }> {
   const results = await Promise.all(
-    MERKMALE.map((config) =>
+    ARTICLE_MERKMALE.map((config) =>
       supabase
         .from(config.table)
         .select(selectColumns(config))
@@ -25,7 +25,7 @@ export async function loadReferences(
 
   const references: ReferenceData = {}
   let failed = false
-  MERKMALE.forEach((config, index) => {
+  ARTICLE_MERKMALE.forEach((config, index) => {
     const { data, error } = results[index]
     if (error) failed = true
     references[config.articleKey] = ((data ?? []) as unknown as Record<string, unknown>[]).map(

@@ -115,9 +115,10 @@ export function RolesTab({ tenantId, tenantName, roles }: RolesTabProps) {
                   .map((m) => {
                     // Masken ohne Lese-Stufe (Benutzerverwaltung) brauchen keinen Zusatz.
                     const supportsReadOnly = MASKS.find((k) => maskKey(k) === maskKey(m))?.supportsReadOnly
-                    return supportsReadOnly
-                      ? `${getMaskLabel(m)} (${ACCESS_LEVEL_LABELS[m.accessLevel]})`
+                    const base = supportsReadOnly
+                      ? `${getMaskLabel(m)} (${ACCESS_LEVEL_LABELS[m.accessLevel]}${m.canToggleActive ? " + (De)Aktivieren" : ""})`
                       : getMaskLabel(m)
+                    return base
                   })
                   .join(", ")
                 return (

@@ -5,11 +5,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Building2,
+  BookUser,
   ChevronRight,
   ChevronsUpDown,
   House,
   ListTree,
   LogOut,
+  MapPinned,
   Package,
   ShieldCheck,
   UserRound,
@@ -59,6 +61,9 @@ export interface AppSidebarProps {
   canManageUsers: boolean
   /** Warenwirtschaft: nur Einträge, für die der User in mindestens einem Mandanten ein Recht hat. */
   canViewArticles: boolean
+  /** PROJ-4: Adressen bzw. Kontakte (jeweils mindestens Lesezugriff in einem Mandanten). */
+  canViewAddresses: boolean
+  canViewContacts: boolean
   merkmalItems: { title: string; href: string }[]
 }
 
@@ -183,6 +188,8 @@ export function AppSidebar({
   isSuperAdmin,
   canManageUsers,
   canViewArticles,
+  canViewAddresses,
+  canViewContacts,
   merkmalItems,
 }: AppSidebarProps) {
   const pathname = usePathname()
@@ -208,6 +215,12 @@ export function AppSidebar({
   const warenItems: NavItem[] = []
   if (canViewArticles) {
     warenItems.push({ title: "Artikelstamm", href: "/artikelstamm", icon: Package })
+  }
+  if (canViewAddresses) {
+    warenItems.push({ title: "Adressen", href: "/adressen", icon: MapPinned })
+  }
+  if (canViewContacts) {
+    warenItems.push({ title: "Kontakte", href: "/kontakte", icon: BookUser })
   }
 
   const adminItems: NavItem[] = []

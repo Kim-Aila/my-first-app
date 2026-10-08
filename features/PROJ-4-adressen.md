@@ -1,6 +1,6 @@
 # PROJ-4: Warenwirtschaft – Adressen
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-10-08
 **Last Updated:** 2026-10-08
 
@@ -387,6 +387,45 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
 - **PROJ-3:** Artikelformular/-API (Markeninhaber = Adress-Auswahl), Matchcode-Berechnung, Merkmal-Konfiguration ohne Markeninhaber, bestehende Tests anpassen.
 - **Frontend:** Adressliste, Adressmaske (5 Reiter), Kontakte-Gesamtliste, Kontakt-Dialog, Adress-Auswahlfeld, Länder-Konfiguration, Sidebar (+3 Einträge, −1), Rollen-Dialog (Schalter).
 - **Tests:** Adressnummer/Kennziffer, Hierarchie (Zyklus, Kaskade, Vorfahren-Kontakte), Rechte inkl. Zusatzrecht, Sperren, Mandantentrennung (inkl. SQL-RLS-Tests), Markeninhaber-Umstellung/Matchcode.
+
+## Implementation Notes (Frontend)
+
+### Gebaut
+- **Seiten:** `/adressen` (Liste), `/adressen/neu`, `/adressen/[addressId]`, `/kontakte` (Gesamtliste). Länder laufen über die vorhandene `/merkmale/laender`.
+- **Komponenten** (`src/components/adressen/`): `address-form` (5 Reiter in einem Formular, Fehlermarkierung, Kopfzeile mit Rollen-/Status-Badge, Sperr-Banner, Deaktivieren-/Aktivieren-Dialog mit Rückfrage zu untergeordneten Adressen), `address-select` (suchbares, serverseitig ladendes Adress-Auswahlfeld + Label mit Link), `address-contacts-tab` (eigene + geerbte Kontakte, Herkunftsspalte, Status-Dialog), `contact-form-dialog` (Anlegen/Bearbeiten/Ansehen mit eigener Bearbeitungssperre), `contact-table` (Gesamtliste mit Aktionen), `address-filters`, `contact-filters`. Neu allgemein: `components/list-pagination.tsx`.
+- **Bibliotheken:** `lib/addresses.ts` (Rollen, Formular-Schema, Adressnummer-Vorschau, Payload/Row-Mapping), `lib/contacts.ts`, `lib/address-data.ts` (serverseitige Ladehelfer), `apiGet` in `lib/api-client.ts`.
+- **PROJ-2-Erweiterung:** Maske-Register um Adressen, Kontakte, Länder erweitert, „Markeninhaber" entfernt; `MaskDefinition.supportsActivation` (nur Adressen) und `MaskPermission.canToggleActive`; Rollen-Dialog zeigt bei Masken mit `supportsActivation` einen Schalter „Darf … aktivieren/deaktivieren" (nur wirksam bei „Lesen + Bearbeiten"); Rollenübersicht nennt das Zusatzrecht; `SessionContext.maskToggle` + `canToggleActive()` in `tenant-access.ts`.
+- **PROJ-3-Anpassung:** Artikelmaske: Feld „Markeninhaber" ist jetzt eine Adress-Auswahl (nur aktive Adressen mit Kürzel, Leerhinweis „Noch keine Adresse mit Kürzel – hier anlegen", Label verlinkt auf die gewählte Adresse, Matchcode-Vorschau nutzt das Adress-Kürzel). Der API-Schlüssel bleibt `brandOwnerId` (Wert = Adress-ID). Merkmal-Konfiguration: „Markeninhaber" entfernt, „Länder" (Feldart `letters`, automatisch Großbuchstaben) ergänzt; `ARTICLE_MERKMALE` trennt Artikel-Merkmale von Länder. Sidebar: „Adressen" und „Kontakte" (Länder erscheinen automatisch unter „Merkmale").
+- **Tests:** neue Unit-Tests `addresses.test.ts`, `contacts.test.ts`; erweitert `merkmale.test.ts` (Länder), `tenant-access.test.ts` (Zusatzrecht), `masks.test.ts`. Zwei bestehende Tests angepasst (Markeninhaber nicht mehr vorhanden). Stand: 301 Unit-Tests grün, `tsc`, `npm run lint` und `npm run build` ohne Fehler.
+
+### Abweichungen / Interpretationen (bitte bestätigen)
+- **Anrede** ist ein Freitextfeld (max. 30 Zeichen), da die Spec keine feste Liste nennt.
+- **Kontakte anlegen** nur im Reiter „Kontakt" einer Adresse (Adresse vorbelegt); die Gesamtliste erlaubt Suchen, Bearbeiten und (De)Aktivieren, aber kein Anlegen.
+- **Gesamtliste der Kontakte:** Status-Filter steht standardmäßig auf „Alle" (inaktive sind gekennzeichnet); bei der Adressliste gilt wie in der Spec „Aktiv" als Standard.
+- **Rückfrage beim Deaktivieren** erscheint, wenn die Adresse *direkt* untergeordnete aktive Adressen hat (bei Reaktivieren: irgendeine direkt untergeordnete). Eine aktive Adresse tiefer unter einer inaktiven direkten Unteradresse löst die Rückfrage nicht aus; `includeChildren: false` lässt sie dann aktiv.
+- **Kürzel-Duplikat-Hinweis** erscheint 0,4 s nach der Eingabe (und beim Öffnen einer Adresse mit Kürzel im Bearbeitungsmodus), nicht erst beim Verlassen des Feldes.
+- **Kennziffer-Vorschlag** füllt ein leeres Feld vor und bietet bei abweichender Eingabe „Übernehmen" an.
+- **Kontakt-Reiter bei geänderter Zentrale:** Die geerbten Kontakte wechseln erst nach dem Speichern der Adresse (Hinweis im Reiter).
+- **Live-Prüfung im Browser** war nicht möglich: Ohne die von `/backend` angelegten Tabellen und Routen zeigen die Seiten den Fehlerzustand (wie bei PROJ-3 im Frontend-Schritt).
+
+### Annahmen für `/backend` (Frontend ruft das schon so auf)
+**Tabellen / Spalten** (alle mit `tenant_id`, RLS wie PROJ-3):
+- `countries`: `id, name, code (2–3 Buchstaben, Großbuchstaben, pro Mandant eindeutig), is_active` — Merkmal-Routen müssen die Feldart `letters` kennen (`warenwirtschaft-shared.ts` kennt bisher nur `text`/`digit`/Dezimal und würde `code` sonst als Zahl behandeln); Maske `warenwirtschaft:merkmal_laender`.
+- `addresses`: `id, address_base, address_suffix, address_number (Basis.Kennziffer, pro Mandant eindeutig), name, name_addition, code, gln, roles (Text-Array), street, house_number, postal_code, city, country_id, phone, email, website, vat_id, remark, parent_address_id, invoice_recipient_id, invoice_ship_to_id, billing_company_id, is_active, updated_at, search_text (gemeinsame Suchspalte, Trigram-Index)`. Rollenwerte: `customer, supplier, carrier, service_provider, delivery_address, other`.
+- `contacts`: `id, address_id, salutation, first_name, last_name, function_title, phone, mobile, email, remark, is_active`.
+- `role_permissions.can_toggle_active` (boolean, Default false; Administrator-Standardrolle = true für Adressen). Maskenschlüssel: `warenwirtschaft:adressen`, `:kontakte`, `:merkmal_laender`; `:merkmal_markeninhaber` entfällt samt Rechten.
+- Sperr-Datensatztypen `address` und `contact` (`edit_lock_types`).
+- Artikel: Markeninhaber-Verweis zeigt auf `addresses` (API-Schlüssel `brandOwnerId` unverändert); Matchcode nimmt das Adress-Kürzel; Neuberechnung bei Kürzeländerung.
+
+**Routen** (unter `/api/tenants/:tenantId`, Fehlerformat `{ error, field? }`):
+- `GET addresses/options?q=&requireCode=true&excludeSubtreeOf=<id>` → `{ items: AddressOption[] }` (nur aktive; begrenzt; `excludeSubtreeOf` blendet die Adresse und alle ihre Nachkommen aus)
+- `GET addresses/next-suffix?base=` → `{ exists: boolean, suffix: string | null }` (nächste freie Kennziffer; `exists` = Basis gibt es schon)
+- `GET addresses/code-check?code=&excludeId=` → `{ items: AddressOption[] }` (alle Adressen mit demselben Kürzel, auch inaktive)
+- `POST addresses`, `PATCH addresses/:id` (Body siehe `toAddressPayload`; Fehler `field: "suffix"`/`"addressNumber"` bei Duplikat, `parentAddressId` bei Zyklus), `PATCH addresses/:id/status` Body `{ isActive, includeChildren }` (unteilbar; Kontakte werden beim Deaktivieren mitdeaktiviert; Recht = Zusatzrecht `can_toggle_active`)
+- `GET addresses/:id/contacts` → `{ own: Contact[], inherited: (Contact & { source: { addressId, addressNumber, addressName, level } })[] }` (Antwort-Typen in `lib/contacts.ts`)
+- `POST contacts` (Body `toContactPayload` + `addressId`), `PATCH contacts/:id`, `PATCH contacts/:id/status` Body `{ isActive }`
+- Rollen-API (`roles`, `roles/:id`): Maskeneinträge tragen zusätzlich `canToggleActive` (boolean, nur bei Masken mit `supportsActivation`).
+- Server-Seiten lesen `addresses`, `contacts`, `countries` direkt per Supabase-Client (RLS), die Rollen-Seiten zusätzlich `role_permissions.can_toggle_active`.
 
 ## QA Test Results
 _To be added by /qa_
