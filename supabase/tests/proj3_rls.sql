@@ -247,13 +247,13 @@ do $$ declare n int; begin
 end $$;
 select pg_temp.as_user('b0000000-0000-4000-8000-000000000007');
 update public.base_articles set code = '1250' where id = 'd2000000-0000-4000-8000-000000000001';
-update public.brand_owners set code = 'X' where false;
 select pg_temp.as_admin();
 select pg_temp.expect_eq((select match_code from public.articles where id = 'e0000000-0000-4000-8000-000000000001'), 'FW-SMR-1250', 'Matchcode nach Basisartikel-Kürzel neu berechnet');
 select pg_temp.expect_eq((select article_number from public.articles where id = 'e0000000-0000-4000-8000-000000000001'), '12345.0042', 'Artikelnummer unabhängig vom Basisartikel-Kürzel');
 
 -- Matchcode vollständig: alle 7 Merkmale, Neuberechnung bei Änderung jedes Kürzels
-insert into public.brand_owners (id, tenant_id, code, name) values ('d5000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'BO', 'Marke');
+-- PROJ-4: Der Markeninhaber ist eine Adresse mit Kürzel (die Tabelle brand_owners entfällt).
+insert into public.addresses (id, tenant_id, address_base, address_suffix, name, code) values ('d5000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '5', '0001', 'Marke', 'BO');
 insert into public.form_designs (id, tenant_id, code, name) values ('d6000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'HAS', 'Hase');
 insert into public.pack_sizes (id, tenant_id, code, name) values ('d7000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', '100', '100 g');
 insert into public.flavors (id, tenant_id, code, name) values ('d8000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'VM', 'Vollmilch');
@@ -263,7 +263,7 @@ values ('e0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-0000000
         'd6000000-0000-4000-8000-000000000001', 'd7000000-0000-4000-8000-000000000001', 'd8000000-0000-4000-8000-000000000001', 'd4000000-0000-4000-8000-000000000001');
 select pg_temp.expect_eq((select article_number || '|' || match_code from public.articles where id = 'e0000000-0000-4000-8000-000000000003'), '9876543210.0001|FW-BO-SMR-1250-HAS-100-VM', 'Matchcode mit allen 7 Merkmalen');
 update public.article_types set code = 'FG' where id = 'd1000000-0000-4000-8000-000000000001';
-update public.brand_owners set code = 'B2' where id = 'd5000000-0000-4000-8000-000000000001';
+update public.addresses set code = 'B2' where id = 'd5000000-0000-4000-8000-000000000001';
 update public.form_designs set code = 'OST' where id = 'd6000000-0000-4000-8000-000000000001';
 update public.pack_sizes set code = '200' where id = 'd7000000-0000-4000-8000-000000000001';
 update public.flavors set code = 'ZB' where id = 'd8000000-0000-4000-8000-000000000001';

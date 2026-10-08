@@ -37,6 +37,9 @@ export const roleSchema = z.object({
         accessLevel: z
           .enum(["read", "write"], { error: "Ungültige Zugriffsstufe." })
           .optional(),
+        // PROJ-4: Zusatzrecht "aktivieren/deaktivieren"; nur bei Masken mit `supportsActivation`
+        // und Stufe "write" wirksam, sonst immer false.
+        canToggleActive: z.boolean({ error: "Ungültiges Zusatzrecht." }).optional(),
       }),
       { error: UNKNOWN_MASK_MESSAGE }
     )
@@ -49,9 +52,11 @@ export const roleSchema = z.object({
       // Masken ohne Lese-Stufe (Benutzerverwaltung) kennen nur "Zugriff" = "write".
       const unique = new Map(
         masks.map((m) => {
-          const supportsReadOnly = MASKS.find((k) => maskKey(k) === maskKey(m))?.supportsReadOnly
-          const accessLevel: AccessLevel = supportsReadOnly ? (m.accessLevel ?? "write") : "write"
-          return [maskKey(m), { module: m.module, maske: m.maske, accessLevel }]
+          const known = MASKS.find((k) => maskKey(k) === maskKey(m))
+          const accessLevel: AccessLevel = known?.supportsReadOnly ? (m.accessLevel ?? "write") : "write"
+          const canToggleActive =
+            Boolean(known?.supportsActivation) && accessLevel === "write" && m.canToggleActive === true
+          return [maskKey(m), { module: m.module, maske: m.maske, accessLevel, canToggleActive }]
         })
       )
       return [...unique.values()]

@@ -167,7 +167,7 @@ async function setupProj3(admin: SupabaseClient) {
 
   const merkmalMasks: [string, "write"][] = [
     "merkmal_artikeltyp",
-    "merkmal_markeninhaber",
+    "merkmal_laender",
     "merkmal_saison",
     "merkmal_basisartikel",
     "merkmal_form_design",

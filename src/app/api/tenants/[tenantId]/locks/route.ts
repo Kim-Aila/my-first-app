@@ -16,7 +16,7 @@ import { createClient as createServerClient } from "@/lib/supabase-server"
 // 15 Minuten, Rechteprüfung je Datensatztyp) liegt in den SQL-Funktionen acquire_edit_lock /
 // release_edit_lock; die Routen validieren nur und übersetzen Ergebnisse in HTTP.
 
-const NOUNS: Record<string, string> = { article: "Artikel" }
+const NOUNS: Record<string, string> = { article: "Artikel", address: "Adresse", contact: "Kontakt" }
 
 const lockSchema = z.object({
   resourceType: z.string({ error: "Datensatztyp fehlt." }).trim().min(1, "Datensatztyp fehlt.").max(50),

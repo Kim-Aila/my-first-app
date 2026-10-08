@@ -14,9 +14,9 @@ export const INVALID_INPUT_MESSAGE = "Ungültige Eingabe."
 
 // ---- Artikel --------------------------------------------------------------------------------
 
-const refId = z.uuid({ error: "Ungültiger Verweis." }).nullish().transform((v) => v ?? null)
+export const refId = z.uuid({ error: "Ungültiger Verweis." }).nullish().transform((v) => v ?? null)
 
-function text(max: number, label: string) {
+export function text(max: number, label: string) {
   return z
     .string({ error: `${label} ist ungültig.` })
     .trim()
@@ -154,6 +154,15 @@ export function merkmalSchema(config: MerkmalConfig) {
       shape[field.key] = field.required
         ? base.min(1, `Bitte ${label} angeben`)
         : base.nullish().transform((v) => (v ? v : null))
+    } else if (field.kind === "letters") {
+      // Länderkürzel: 2 bis 3 Buchstaben, wird in Großbuchstaben gespeichert (PROJ-4).
+      const message = "Bitte 2 bis 3 Buchstaben angeben (keine Ziffern)"
+      const base = z
+        .string({ error: `Bitte ${label} angeben` })
+        .trim()
+        .regex(/^\p{L}{2,3}$/u, message)
+        .transform((v) => v.toUpperCase())
+      shape[field.key] = field.required ? base : base.nullish().transform((v) => v ?? null)
     } else if (field.kind === "digit") {
       const base = z
         .number({ error: "Bitte eine einzelne Ziffer von 0 bis 9 angeben" })
@@ -201,6 +210,12 @@ export function merkmalDuplicateMessage(config: MerkmalConfig) {
 interface DbError {
   code?: string
   message?: string
+  /** Trigger-Fehler nennen das betroffene Formularfeld als `field:<name>` (PROJ-4). */
+  details?: string
+}
+
+function fieldFromDetails(error: DbError) {
+  return error.details?.startsWith("field:") ? error.details.slice("field:".length) : undefined
 }
 
 /**
@@ -222,12 +237,17 @@ export function dbErrorResponse(
         400,
         error.message && !error.message.includes("violates check constraint")
           ? error.message
-          : INVALID_INPUT_MESSAGE
+          : INVALID_INPUT_MESSAGE,
+        fieldFromDetails(error)
       )
     case "55P03":
       return jsonError(409, error.message ?? "Der Datensatz ist gesperrt.")
     case "42501":
       return jsonError(403, FORBIDDEN_MESSAGE)
+    case "P0002":
+      return jsonError(404, error.message ?? "Nicht gefunden.")
+    case "22023":
+      return jsonError(400, error.message ?? INVALID_INPUT_MESSAGE)
     default:
       return jsonError(500, SERVER_ERROR_MESSAGE)
   }

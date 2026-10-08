@@ -51,6 +51,7 @@ export async function POST(
           module: m.module,
           maske: m.maske,
           access_level: m.accessLevel,
+          can_toggle_active: m.canToggleActive,
         }))
       )
 

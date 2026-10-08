@@ -427,6 +427,34 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
 - Rollen-API (`roles`, `roles/:id`): Maskeneinträge tragen zusätzlich `canToggleActive` (boolean, nur bei Masken mit `supportsActivation`).
 - Server-Seiten lesen `addresses`, `contacts`, `countries` direkt per Supabase-Client (RLS), die Rollen-Seiten zusätzlich `role_permissions.can_toggle_active`.
 
+## Implementation Notes (Backend)
+
+### Migrationen (auf der lokalen Entwicklungsdatenbank angewendet, in `supabase_migrations` eingetragen)
+- `20261008100000_proj4_tables.sql`: Tabellen `countries`, `addresses`, `contacts`; Spalte `role_permissions.can_toggle_active` (Check: nur zusammen mit Stufe „write"); Trigger `addresses_before_write` (Adressnummer, Suchzeile, Zyklusprüfung mit Advisory-Lock je Mandant, keine neue Wahl inaktiver Verweise, Status nur über Funktion, Bearbeitungssperre) und `contacts_before_write` (Adresse unveränderlich, nicht an inaktive Adresse anlegbar, Sperre); Umstellung des Markeninhabers am Artikel (neue Fassung von `articles_before_write`: Kürzel aus `addresses`, Markeninhaber muss ein Kürzel haben und im Mandanten existieren; Zuordnungen geleert, Tabelle `brand_owners` samt Rechten entfernt; Matchcode-Neuberechnung bei Kürzeländerung); Funktionen `mask_can_toggle`, `address_subtree`, `address_options`, `next_address_suffix`, `address_code_matches`, `address_contacts` (alle mit RLS des Aufrufers) und `set_address_status` (unteilbare Kaskade, SECURITY DEFINER); Sperr-Datensatztypen `address`/`contact`; Rechte-Vorbelegung für Rollen mit Benutzerverwaltung (Adressen inkl. Zusatzrecht, Kontakte, Länder: „Lesen + Bearbeiten").
+- `20261008100100_proj4_rls.sql` (RLS freigegeben am 2026-10-08): Länder lesen = Maske Länder ODER Adressen; Adressen lesen = Maske Adressen ODER Artikelstamm; Kontakte lesen = nur Maske Kontakte; schreiben jeweils nur mit „write" auf der eigenen Maske; auf keiner Tabelle eine DELETE-Policy.
+
+### Routen (alle unter `/api/tenants/:tenantId`, Session-Client → RLS als zweite Ebene, Zod, deutsche Fehlermeldungen)
+- `POST addresses`, `PATCH addresses/:id` (verlangt eigene Sperre, gibt sie danach frei; `isActive` wird ignoriert), `PATCH addresses/:id/status` (Zusatzrecht, ruft `set_address_status`), `GET addresses/:id/contacts`, `GET addresses/options`, `GET addresses/next-suffix`, `GET addresses/code-check`.
+- `POST contacts`, `PATCH contacts/:id`, `PATCH contacts/:id/status` (nur „Lesen + Bearbeiten", kein Zusatzrecht).
+- Länder: bestehende Merkmal-Routen (`merkmale/laender`), Feldart „Buchstaben" ergänzt (Großbuchstaben); `merkmale/markeninhaber` gibt 404.
+- Rollen-API (`roles`, `roles/:id`): Feld `canToggleActive` je Maske (nur bei `supportsActivation` und Stufe „write", sonst `false`); Update setzt Stufe und Zusatzrecht in einem Schritt.
+- Sperren-Route kennt die Datensatztypen `address`/`contact`. Trigger-Fehler nennen das Formularfeld im `details`-Feld (`field:<name>`), `dbErrorResponse` gibt es als `field` weiter.
+
+### Tests und Verifikation
+- 374 Unit-/Integrationstests grün (neu: `addresses.test.ts`, `contacts.test.ts`, Länder-Fälle in `merkmale.test.ts`, Zusatzrecht in den Rollen-Tests); `tsc`, `npm run lint`, `npm run build` ohne Fehler.
+- SQL-Tests gegen die Datenbank: neu `supabase/tests/proj4_rls.sql` (RLS je Maske und Mandant, Nummer/Validierung, Zyklen, Kaskade, Zusatzrecht, Sperren, Hilfsfunktionen, Markeninhaber/Matchcode, kein Löschen) und angepasster `proj3_rls.sql` (Markeninhaber = Adresse): beide „ALL OK" auf einer Kopie der Entwicklungsdatenbank vor dem Anwenden und auf der echten Entwicklungsdatenbank nach dem Anwenden.
+- Live-Smoke-Test gegen die laufende App (Dev-Server, echte Datenbank, danach Testdaten entfernt): Länder, Adressen (Nummer, Duplikat, Zyklus, Sperre), Hilfsabfragen, Kontakte inkl. Vorfahren-Kontakte, Kaskade, Rollen mit Zusatzrecht, Artikel mit Markeninhaber (Matchcode folgt der Kürzeländerung, inaktiver Markeninhaber bleibt, nicht neu wählbar); alle neuen und angepassten Seiten laden mit Daten.
+
+### Abweichungen / Hinweise (bitte bestätigen)
+- **Keine GET-Routen für Liste/Einzelabruf** von Adressen/Kontakten: Wie bei Artikeln lesen die Server-Seiten direkt per RLS. Für spätere Agenten (PROJ-10) gibt es bisher die gezielten Abfragen (Optionen, Kontakte inkl. Vorfahren, Kürzel-Treffer, nächste Kennziffer); eine allgemeine Listen-API wäre ein späterer Ausbau.
+- **Status nur über die Funktion:** Ein direktes UPDATE von `is_active` an Adressen ist für Clients gesperrt (auch für Administratoren), damit das Zusatzrecht und die Kaskade nicht umgangen werden. Neue Adressen/Kontakte sind immer aktiv.
+- **Kontakte an inaktiven Adressen:** Neue Kontakte können nicht an eine deaktivierte Adresse angelegt werden (Spec schweigt dazu).
+- **Sperre bei der Kaskade:** wie im Tech Design: Sperren auf Unteradressen blockieren nicht, die Sperre der gewählten Adresse selbst schon (409 mit Nutzername).
+- **Rechte-Vorbelegung:** nur Rollen mit der Maske Benutzerverwaltung (Nutzerentscheidung); „Einkauf/Verkauf/Lager" gibt es als feste Rollen nicht und werden im Rollen-Dialog vergeben.
+- **Adressen sind für Artikelstamm-Leser lesbar** (Nutzerentscheidung), Kontakte nicht.
+- **Entwicklungsdatenbank:** Die Migration hat die Markeninhaber-Zuordnung des einen vorhandenen Test-Artikels geleert und `brand_owners` entfernt (laut Spec). Eine Sicherung des vorherigen Standes liegt im Scratchpad der Sitzung.
+- **E2E-Fixtures** (`tests/global-setup.ts`): die entfernte Maske `merkmal_markeninhaber` durch `merkmal_laender` ersetzt; E2E-Tests für PROJ-4 folgen mit `/qa`.
+
 ## QA Test Results
 _To be added by /qa_
 

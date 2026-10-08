@@ -33,7 +33,7 @@ describe("PATCH /api/tenants/:tenantId/roles/:roleId", () => {
     expect(res.status).toBe(200)
     expect(server.callsTo("roles", "update")[0].payload).toEqual({ name: "Lager Nord" })
     expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
-      { role_id: IDS.role, ...MASK, access_level: "write" },
+      { role_id: IDS.role, ...MASK, access_level: "write", can_toggle_active: false },
     ])
     expect(server.callsTo("role_permissions", "delete")).toHaveLength(0)
   })
@@ -55,9 +55,57 @@ describe("PATCH /api/tenants/:tenantId/roles/:roleId", () => {
       params()
     )
     expect(res.status).toBe(200)
-    expect(server.callsTo("role_permissions", "update")[0].payload).toEqual({ access_level: "read" })
+    expect(server.callsTo("role_permissions", "update")[0].payload).toEqual({
+      access_level: "read",
+      can_toggle_active: false,
+    })
     expect(server.callsTo("role_permissions", "insert")).toHaveLength(0)
     expect(server.callsTo("role_permissions", "delete")).toHaveLength(0)
+  })
+
+  it("updates the Zusatzrecht of a mask that stays and resets it when the level drops to read (PROJ-4)", async () => {
+    server.loginAs({ id: IDS.caller })
+    server.tenantAdminRoles(true)
+    const ADRESSEN = { module: "warenwirtschaft", maske: "adressen" }
+    const role = (toggle: boolean, level: string) => ({
+      data: {
+        id: IDS.role,
+        name: "Verkauf",
+        role_permissions: [
+          { id: "perm-2", ...ADRESSEN, access_level: level, can_toggle_active: toggle },
+        ],
+      },
+    })
+
+    server.respond("roles:select", role(false, "write"))
+    await PATCH(
+      jsonRequest(url, "PATCH", {
+        name: "Verkauf",
+        masks: [{ ...ADRESSEN, accessLevel: "write", canToggleActive: true }],
+      }),
+      params()
+    )
+    expect(server.callsTo("role_permissions", "update")[0].payload).toEqual({
+      access_level: "write",
+      can_toggle_active: true,
+    })
+
+    server.reset()
+    server.loginAs({ id: IDS.caller })
+    server.tenantAdminRoles(true)
+    server.respond("roles:select", role(true, "write"))
+    await PATCH(
+      jsonRequest(url, "PATCH", {
+        name: "Verkauf",
+        masks: [{ ...ADRESSEN, accessLevel: "read", canToggleActive: true }],
+      }),
+      params()
+    )
+    // One update sets both fields, so the DB constraint (right needs 'write') never fails.
+    expect(server.callsTo("role_permissions", "update")[0].payload).toEqual({
+      access_level: "read",
+      can_toggle_active: false,
+    })
   })
 
   it("does not touch a mask whose access level is unchanged", async () => {

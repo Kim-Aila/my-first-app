@@ -139,11 +139,45 @@ describe("POST /api/tenants/:tenantId/merkmale/:slug", () => {
     ["palettenklassen", { code: "" }, "code"],
     ["palettenklassen", { code: "x".repeat(21) }, "code"],
     ["geschmackssorten", { code: "x".repeat(21), name: "y" }, "code"],
+    ["laender", { name: "Deutschland", code: "D" }, "code"],
+    ["laender", { name: "Deutschland", code: "DEUT" }, "code"],
+    ["laender", { name: "Deutschland", code: "D1" }, "code"],
+    ["laender", { name: "", code: "DE" }, "name"],
   ])("returns 400 with the field for invalid %s input", async (slug, body, field) => {
     asWriter()
     const res = await post(slug, body)
     expect(res.status).toBe(400)
     expect((await res.json()).field).toBe(field)
+  })
+
+  it("creates a Land with the Länderkürzel in capital letters in its own table and mask (PROJ-4)", async () => {
+    asWriter()
+    server.respond("countries:insert", { data: { id: ITEM } })
+    const res = await post("laender", { name: " Vereinigte Arabische Emirate ", code: "vae" })
+    expect(res.status).toBe(201)
+    expect(server.rpc).toHaveBeenCalledWith("mask_access_level", {
+      p_tenant_id: IDS.tenant,
+      p_module: "warenwirtschaft",
+      p_maske: "merkmal_laender",
+    })
+    expect(server.callsTo("countries", "insert")[0].payload).toEqual({
+      tenant_id: IDS.tenant,
+      name: "Vereinigte Arabische Emirate",
+      code: "VAE",
+    })
+  })
+
+  it("returns 409 on the field 'code' for a duplicate Länderkürzel", async () => {
+    asWriter()
+    server.respond("countries:insert", { error: { message: "dup", code: "23505" } })
+    const res = await post("laender", { name: "Deutschland", code: "DE" })
+    expect(res.status).toBe(409)
+    expect((await res.json()).field).toBe("code")
+  })
+
+  it("no longer knows the Markeninhaber table (404)", async () => {
+    asWriter()
+    expect((await post("markeninhaber", { code: "X", name: "Y" })).status).toBe(404)
   })
 
   it("returns 409 on the field 'code' for a duplicate Kürzel", async () => {

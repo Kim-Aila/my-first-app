@@ -139,6 +139,32 @@ export async function requireMaskAccess(
   return auth
 }
 
+/**
+ * Wie `requireMaskAccess`, aber es genügt eine von mehreren Masken (z. B. Adressen ODER Artikelstamm,
+ * wenn die Adress-Auswahl am Artikel genutzt wird). Spiegelt die Lese-Policies in RLS.
+ */
+export async function requireAnyMaskAccess(
+  supabase: SupabaseClient,
+  tenantId: string,
+  masks: Pick<MaskDefinition, "module" | "maske">[],
+  level: AccessLevel
+): Promise<CallerResult> {
+  const auth = await requireCaller(supabase)
+  if (!auth.ok) return auth
+  if (auth.caller.isSuperAdmin) return auth
+
+  for (const mask of masks) {
+    const { data, error } = await supabase.rpc("mask_access_level", {
+      p_tenant_id: tenantId,
+      p_module: mask.module,
+      p_maske: mask.maske,
+    })
+    if (error) return { ok: false, response: jsonError(500, SERVER_ERROR_MESSAGE) }
+    if (data === "write" || (level === "read" && data === "read")) return auth
+  }
+  return { ok: false, response: jsonError(403, FORBIDDEN_MESSAGE) }
+}
+
 interface UserRoleWithPermissions {
   role_id: string
   roles: { role_permissions: { module: string; maske: string }[] | null } | null

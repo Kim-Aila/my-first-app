@@ -33,7 +33,7 @@ describe("POST /api/tenants/:tenantId/roles", () => {
     })
     // Duplicates are collapsed.
     expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
-      { role_id: IDS.role, ...MASK, access_level: "write" },
+      { role_id: IDS.role, ...MASK, access_level: "write", can_toggle_active: false },
     ])
   })
 
@@ -50,9 +50,67 @@ describe("POST /api/tenants/:tenantId/roles", () => {
     })
     expect(res.status).toBe(201)
     expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
-      { role_id: IDS.role, module: "warenwirtschaft", maske: "artikelstamm", access_level: "read" },
-      { role_id: IDS.role, ...MASK, access_level: "write" },
+      {
+        role_id: IDS.role,
+        module: "warenwirtschaft",
+        maske: "artikelstamm",
+        access_level: "read",
+        can_toggle_active: false,
+      },
+      { role_id: IDS.role, ...MASK, access_level: "write", can_toggle_active: false },
     ])
+  })
+
+  describe("Zusatzrecht aktivieren/deaktivieren (PROJ-4)", () => {
+    const ADRESSEN = { module: "warenwirtschaft", maske: "adressen" }
+    const KONTAKTE = { module: "warenwirtschaft", maske: "kontakte" }
+
+    it("stores the right for Adressen together with 'Lesen + Bearbeiten'", async () => {
+      server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+      server.respond("roles:insert", { data: { id: IDS.role, name: "Verkauf" } })
+      const res = await post({
+        name: "Verkauf",
+        masks: [{ ...ADRESSEN, accessLevel: "write", canToggleActive: true }],
+      })
+      expect(res.status).toBe(201)
+      expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
+        { role_id: IDS.role, ...ADRESSEN, access_level: "write", can_toggle_active: true },
+      ])
+    })
+
+    it("drops the right when the mask is only readable (database would reject it)", async () => {
+      server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+      server.respond("roles:insert", { data: { id: IDS.role, name: "Lager" } })
+      await post({
+        name: "Lager",
+        masks: [{ ...ADRESSEN, accessLevel: "read", canToggleActive: true }],
+      })
+      expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
+        { role_id: IDS.role, ...ADRESSEN, access_level: "read", can_toggle_active: false },
+      ])
+    })
+
+    it("ignores the right on masks that do not support it", async () => {
+      server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+      server.respond("roles:insert", { data: { id: IDS.role, name: "Verkauf" } })
+      await post({
+        name: "Verkauf",
+        masks: [{ ...KONTAKTE, accessLevel: "write", canToggleActive: true }],
+      })
+      expect(server.callsTo("role_permissions", "insert")[0].payload).toEqual([
+        { role_id: IDS.role, ...KONTAKTE, access_level: "write", can_toggle_active: false },
+      ])
+    })
+
+    it("returns 400 for a non-boolean right", async () => {
+      server.loginAs({ id: IDS.caller, isSuperAdmin: true })
+      const res = await post({
+        name: "Verkauf",
+        masks: [{ ...ADRESSEN, accessLevel: "write", canToggleActive: "ja" }],
+      })
+      expect(res.status).toBe(400)
+      expect(server.callsTo("roles", "insert")).toHaveLength(0)
+    })
   })
 
   it("returns 400 for an invalid access level", async () => {
