@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { acquireLock, lockedMessage, releaseLock } from "./edit-lock"
+import { acquireLock, lockedMessage, nounForms, releaseLock } from "./edit-lock"
 
 const target = { tenantId: "t1", resourceType: "article", resourceId: "a1" }
 
@@ -82,5 +82,17 @@ describe("releaseLock", () => {
 describe("lockedMessage", () => {
   it("names the holder", () => {
     expect(lockedMessage({ username: "anna", expiresAt: null }, "Artikel")).toContain("anna")
+  })
+})
+
+describe("nounForms / lockedMessage (Grammatik)", () => {
+  it("uses 'Die/die/sie' for Adresse and 'Der/den/ihn' otherwise", () => {
+    expect(nounForms("Adresse")).toEqual({ nominative: "Die Adresse", accusative: "die Adresse", pronoun: "sie" })
+    expect(nounForms("Artikel")).toEqual({ nominative: "Der Artikel", accusative: "den Artikel", pronoun: "ihn" })
+    expect(nounForms("Kontakt").nominative).toBe("Der Kontakt")
+  })
+
+  it("builds a correct locked message for an address", () => {
+    expect(lockedMessage({ username: "anna", expiresAt: "x" }, "Adresse")).toMatch(/^Die Adresse wird gerade von anna/)
   })
 })

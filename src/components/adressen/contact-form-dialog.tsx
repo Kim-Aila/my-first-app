@@ -59,9 +59,16 @@ interface ContactFormDialogProps {
 export function ContactFormDialog(props: ContactFormDialogProps) {
   const { open, onOpenChange, contact, readOnly, addressText } = props
   const [busy, setBusy] = React.useState(false)
+  // Das Formular meldet hier seine Abbrechen-Logik an (Rückfrage bei ungespeicherten Änderungen),
+  // damit auch Esc, Klick außerhalb und das X dieselbe Rückfrage auslösen.
+  const closeRequest = React.useRef<(() => void) | null>(null)
 
   function handleOpenChange(next: boolean) {
     if (busy) return
+    if (!next && closeRequest.current) {
+      closeRequest.current()
+      return
+    }
     onOpenChange(next)
   }
 
@@ -80,7 +87,11 @@ export function ContactFormDialog(props: ContactFormDialogProps) {
           {...props}
           busy={busy}
           setBusy={setBusy}
-          onClose={() => handleOpenChange(false)}
+          closeRequest={closeRequest}
+          onClose={() => {
+            closeRequest.current = null
+            onOpenChange(false)
+          }}
         />
       </DialogContent>
     </Dialog>
@@ -95,10 +106,12 @@ function ContactForm({
   onSaved,
   busy,
   setBusy,
+  closeRequest,
   onClose,
 }: ContactFormDialogProps & {
   busy: boolean
   setBusy: (busy: boolean) => void
+  closeRequest: React.MutableRefObject<(() => void) | null>
   onClose: () => void
 }) {
   const router = useRouter()
@@ -175,7 +188,13 @@ function ContactForm({
     [addressId, contact, form, lock, onClose, onSaved, router, setBusy, tenantId]
   )
 
-  const onSubmit = form.handleSubmit((values) => submit(values))
+  const handleSubmit = form.handleSubmit((values) => submit(values))
+  // Der Dialog hängt per Portal im React-Baum des Adressformulars: ohne stopPropagation würde das
+  // submit-Event auch das Adressformular absenden.
+  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.stopPropagation()
+    return handleSubmit(event)
+  }
 
   // Logout-Abfrage: offene Änderungen am Kontakt speichern oder verwerfen.
   useUnsavedChangesEntry({
@@ -202,6 +221,14 @@ function ContactForm({
     if (canEdit && isDirty) setDiscardOpen(true)
     else void close()
   }
+  const requestCloseRef = React.useRef(requestClose)
+  requestCloseRef.current = requestClose
+  React.useEffect(() => {
+    closeRequest.current = () => requestCloseRef.current()
+    return () => {
+      closeRequest.current = null
+    }
+  }, [closeRequest])
 
   async function reacquire() {
     const result = await lock.acquire()

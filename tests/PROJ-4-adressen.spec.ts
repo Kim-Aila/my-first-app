@@ -1245,17 +1245,21 @@ test.describe("PROJ-4: Rechte, Sperre, Mandanten", () => {
     expect((await page.request.get(`/api/tenants/${tenant}/addresses/options`)).status()).toBe(403)
   })
 
-  test("BUG-3 (open): a Kontakte-only user sees the overall list incl. the address column (Adressen is a separate mask)", async ({ page }) => {
-    test.fail()
+  test("AC-31 (Entscheidung 2026-10-08): the address column of the overall contact list needs read access to Adressen", async ({ page }) => {
     const tenant = await tenantId(P4_TENANT)
     const address = await mkAddress(tenant, { name: "E2E Nur-Kontakte Adresse" })
     const contact = await mkContact(tenant, address.id)
+    // Kontakte-only: contact visible, address not (separate mask, personal data stays separated)
     await login(page, P4_NUR_KONTAKTE)
     await page.goto(`/kontakte?mandant=${tenant}&q=${contact.lastName}`)
     const row = page.getByRole("row", { name: new RegExp(contact.lastName) })
     await expect(row).toBeVisible()
-    // Spec: "sieht die zugehörige Adresse je Zeile"
-    await expect(row).toContainText(address.number)
+    await expect(row).not.toContainText(address.number)
+    // with read access to Adressen the address is shown
+    await page.context().clearCookies()
+    await login(page, P4_LAGER)
+    await page.goto(`/kontakte?mandant=${tenant}&q=${contact.lastName}`)
+    await expect(page.getByRole("row", { name: new RegExp(contact.lastName) })).toContainText(address.number)
   })
 
   test("AC-42: while A edits, B only gets read access and the message names A", async ({ page, browser }, testInfo) => {
@@ -1292,8 +1296,8 @@ test.describe("PROJ-4: Rechte, Sperre, Mandanten", () => {
     await expect.poll(async () => (await admin.from("edit_locks").select("id").eq("resource_id", address.id)).data?.length).toBe(0)
   })
 
-  test("BUG-2 (open): the message for a locked Adresse is grammatically correct ('Die Adresse …')", async ({ page, browser }, testInfo) => {
-    test.fail()
+  test("BUG-2: the message for a locked Adresse is grammatically correct ('Die Adresse …')", async ({ page, browser }, testInfo) => {
+    
     const tenant = await tenantId(P4_TENANT)
     const address = await mkAddress(tenant)
     await login(page, P4_EINKAUF)
@@ -1909,8 +1913,7 @@ test.describe("PROJ-4: Security", () => {
 // =============================================================================================
 test.describe("PROJ-4: Responsive", () => {
   for (const [name, width, height] of [["375px", 375, 812], ["768px", 768, 1024], ["1440px", 1440, 900]] as const) {
-    test(`${width === 768 ? "BUG-4 (open): " : ""}the address list and form are usable at ${name} without horizontal page scroll`, async ({ page }) => {
-      if (width === 768) test.fail() // shared layout: the sidebar stays open and wide tables push the page wider (also PROJ-3 lists)
+    test(`${width === 768 ? "BUG-4: " : ""}the address list and form are usable at ${name} without horizontal page scroll`, async ({ page }) => {
       const tenant = await tenantId(P4_TENANT)
       const address = await mkAddress(tenant, { name: "E2E Responsive", roles: ["customer", "supplier"], city: "Hamburg" })
       await page.setViewportSize({ width, height })
@@ -2066,11 +2069,11 @@ test.describe("PROJ-4: Weitere Randfälle", () => {
 })
 
 // =============================================================================================
-// Bugs found by /qa that are still open. Each test asserts the CORRECT behaviour and is marked
+// Bugs found by /qa that are still open (none at the moment). Each test asserts the CORRECT behaviour and is marked
 // test.fail(): it passes as long as the bug exists. Remove test.fail() once the bug is fixed.
 test.describe("PROJ-4 QA: known bugs (open)", () => {
-  test("BUG-1 (open): saving a contact in the dialog must not also submit the address form", async ({ page }) => {
-    test.fail()
+  test("BUG-1: saving a contact in the dialog must not also submit the address form", async ({ page }) => {
+    
     const tenant = await tenantId(P4_TENANT)
     const address = await mkAddress(tenant, { name: "E2E Bubbling" })
     const before = (await admin.from("addresses").select("updated_at").eq("id", address.id).single()).data!.updated_at
@@ -2096,8 +2099,8 @@ test.describe("PROJ-4 QA: known bugs (open)", () => {
     await expect(page.getByText("Adresse gespeichert")).toHaveCount(0)
   })
 
-  test("BUG-1b (open): saving a contact while the address has unsaved edits must not save the address", async ({ page }) => {
-    test.fail()
+  test("BUG-1b: saving a contact while the address has unsaved edits must not save the address", async ({ page }) => {
+    
     const tenant = await tenantId(P4_TENANT)
     const address = await mkAddress(tenant, { name: "E2E Unsaved Original" })
 
@@ -2119,8 +2122,8 @@ test.describe("PROJ-4 QA: known bugs (open)", () => {
     expect((await admin.from("addresses").select("name").eq("id", address.id).single()).data!.name).toBe("E2E Unsaved Original")
   })
 
-  test("BUG-5 (open): closing the contact dialog with Escape asks before discarding unsaved input", async ({ page }) => {
-    test.fail()
+  test("BUG-5: closing the contact dialog with Escape asks before discarding unsaved input", async ({ page }) => {
+    
     const tenant = await tenantId(P4_TENANT)
     const address = await mkAddress(tenant)
     const contact = await mkContact(tenant, address.id, { last_name: "EscapeKontakt" })

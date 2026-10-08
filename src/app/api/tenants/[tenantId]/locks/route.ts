@@ -9,7 +9,7 @@ import {
   requireCaller,
   validationError,
 } from "@/lib/api-auth"
-import { LOCK_INACTIVITY_MS } from "@/lib/edit-lock"
+import { LOCK_INACTIVITY_MS, nounForms } from "@/lib/edit-lock"
 import { createClient as createServerClient } from "@/lib/supabase-server"
 
 // Generische Bearbeitungssperre (PROJ-3). Die eigentliche Logik (atomare Vergabe, Ablauf nach
@@ -71,7 +71,7 @@ export async function POST(
   const minutes = Math.round(LOCK_INACTIVITY_MS / 60000)
   return NextResponse.json(
     {
-      error: `Der ${noun} wird gerade von ${username} bearbeitet. Du hast nur Lesezugriff (die Sperre läuft spätestens nach ${minutes} Minuten ohne Aktivität ab).`,
+      error: `${nounForms(noun).nominative} wird gerade von ${username} bearbeitet. Du hast nur Lesezugriff (die Sperre läuft spätestens nach ${minutes} Minuten ohne Aktivität ab).`,
       lockedBy: { username, expiresAt: row.out_expires_at },
     },
     { status: 409 }

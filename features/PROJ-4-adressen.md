@@ -1,6 +1,6 @@
 # PROJ-4: Warenwirtschaft – Adressen
 
-## Status: In Review
+## Status: Approved
 **Created:** 2026-10-08
 **Last Updated:** 2026-10-08
 
@@ -202,6 +202,7 @@ Land (Name, Pflicht), Länderkürzel (**Pflicht, 2 bis 3 Buchstaben**, automatis
 | Markeninhaber am Artikel verweist auf Adresse mit Kürzel; Merkmal-Tabelle Markeninhaber entfällt; Testdaten werden bereinigt | Umsetzung der in PROJ-3 vorgesehenen Verknüpfung; keine zweite Pflegestelle | 2026-10-08 |
 | Standard-Rechte: Admin alles; Einkauf/Verkauf Adressen+Kontakte lesen/bearbeiten, Länder lesen; Lager/Produktion lesen | Sinnvoller Default, über PROJ-2 anpassbar | 2026-10-08 |
 | Bearbeitungssperre aus PROJ-3 gilt für Adressen und einzelne Kontakte | Konsistentes Verhalten, wiederverwendbarer Mechanismus | 2026-10-08 |
+| Adressspalte der Kontakte-Gesamtliste nur mit Leserecht auf Adressen (Rolle nur mit „Kontakte lesen" sieht „–") | Nutzerentscheidung bei QA (BUG-3): Masken bleiben getrennt, keine zusätzliche Rechte-Freigabe | 2026-10-08 |
 | Liste flach mit Suche und Filtern (Rolle, Status, Land); keine Baumansicht im MVP | Hierarchie ist in der Adressmaske sichtbar; Baumansicht ist späterer Ausbau | 2026-10-08 |
 | Adressmaske als Reiter in einem Formular (Stammdaten, Anschrift, Kontakt, Verknüpfungen, Steuer & Bemerkung) | Einheitlich zur Artikelmaske; übersichtlich | 2026-10-08 |
 | Nur Basis, Kennziffer und Name sind Pflicht | Unvollständige Adressen sollen anlegbar sein; strengere Pflichtfelder später über PROJ-12 | 2026-10-08 |
@@ -464,7 +465,7 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
 
 ### Automatisierte Tests
 - Vitest: 384 grün (neu: `src/lib/address-data.test.ts`, 10 Tests für `sanitizeSearch` und die Lade-Helfer); `tsc` und `npm run lint` ohne Fehler.
-- Playwright `tests/PROJ-4-adressen.spec.ts`: 63 Tests je Browser (davon 7 „known bugs (open)" mit `test.fail()`), Chromium + Mobile Safari + Firefox ohne unerwartete Fehlschläge. Einzelne Tests brauchten beim Dev-Server-Kaltstart einen zweiten Versuch (Datei-Retry 1, siehe Kommentar im Test).
+- Playwright `tests/PROJ-4-adressen.spec.ts`: 63 Tests je Browser (Bug-Regressionstests BUG-1, 1b, 2, 4, 5 laufen nach den Fixes ohne `test.fail()`), Chromium + Mobile Safari + Firefox ohne unerwartete Fehlschläge. Einzelne Tests brauchten beim Dev-Server-Kaltstart einen zweiten Versuch (Datei-Retry 1, siehe Kommentar im Test).
 - Regression PROJ-1/2/3: Gesamtlauf grün bis auf zwei Last-Flakes (PROJ-2 AC-7 und PROJ-3 AC-5, Mobile Safari bzw. Chromium); beide bestehen einzeln in beiden Browsern. Keine Regression durch PROJ-4.
 - Fixtures: `tests/fixtures.ts`, `global-setup.ts`, `global-teardown.ts` um PROJ-4 erweitert (3 Mandanten, 7 Rollen, 10 Nutzer).
 - DB-Performance (EXPLAIN ANALYZE, 3000 Adressen): Liste 0,02 ms, Suche 0,1–1,4 ms. Seitenzeiten im Dev-Server (5–7 s) sind Kompilier-Overhead, kein Anwendungsproblem.
@@ -573,36 +574,36 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
   2. Expected: nur der Kontakt wird gespeichert, Reiter bleibt „Kontakt"
   3. Actual: zusätzlich PATCH auf die Adresse (`updated_at`/`updated_by` ändern sich, Toast „Adresse gespeichert"), die Maske baut sich neu auf und springt auf „Stammdaten"
   4. Im Bearbeitungsmodus (Adresse mit ungespeicherten Änderungen) werden diese beim Kontakt-Speichern still mitgespeichert, Sperre freigegeben und der Bearbeitungsmodus beendet; bei Fehlern im Adressformular springt die Maske zum Fehler-Reiter.
-- **Test:** `BUG-1`, `BUG-1b` (open)
-- **Priority:** Fix before deployment
+- **Test:** `BUG-1`, `BUG-1b`
+- **Status:** BEHOBEN 2026-10-08 (`contact-form-dialog.tsx`: `stopPropagation` am Submit des Dialogs)
 
 #### BUG-2: Falsche Grammatik in der Sperrmeldung („Der Adresse …")
 - **Severity:** Low
 - **Steps:** Adresse in Bearbeitung, zweiter Nutzer ruft Sperre ab
 - **Expected:** „Die Adresse wird gerade von … bearbeitet." / Banner „bearbeitet die Adresse jetzt"
 - **Actual:** „Der Adresse wird gerade von …" (API `locks/route.ts` und `edit-lock-banner.tsx` nutzen fest „Der/den {noun}")
-- **Priority:** Fix in next sprint (vor Deploy ratsam, da sichtbar)
+- **Status:** BEHOBEN 2026-10-08 (`nounForms` in `lib/edit-lock.ts`, genutzt von Banner und Sperr-Route; Unit-Test ergänzt)
 
 #### BUG-3: Kontakte-Gesamtliste ohne Adresse für Nutzer ohne Adressen-Recht
 - **Severity:** Low
 - **Steps:** Rolle nur mit „Kontakte lesen" → `/kontakte`
 - **Expected:** Spalte „Adresse" zeigt die zugehörige Adresse (Spec AC-31)
 - **Actual:** „–", weil `addresses` per RLS nur mit Maske Adressen/Artikelstamm lesbar ist. Entweder bewusst (dann in Spec klären) oder RLS/Anzeige anpassen.
-- **Priority:** Spec-Entscheidung nötig; nicht blockierend
+- **Status:** GEKLÄRT 2026-10-08: Spec-Entscheidung (Adressspalte nur mit Leserecht auf Adressen), siehe Decision Log; Test `AC-31 (Entscheidung …)`
 
 #### BUG-4: Horizontaler Seitenüberlauf bei 768 px
 - **Severity:** Medium
 - **Steps:** Viewport 768 px, `/adressen` mit Treffern
 - **Expected:** keine horizontale Seitenverschiebung
 - **Actual:** 65–80 px Überlauf (Button „Adresse anlegen" und Tabelle rechts abgeschnitten); bei 1024 px 23 px. Gemeinsames Layout: die Artikelliste (PROJ-3) ist stärker betroffen (149 px bei 768 px). 375 und 1440 px sind in Ordnung.
-- **Priority:** Fix in next sprint (übergreifend, nicht PROJ-4-spezifisch)
+- **Status:** BEHOBEN 2026-10-08 (`app/(app)/layout.tsx`: `min-w-0` am Inhaltsbereich; breite Tabellen scrollen nun in ihrem Container). Wirkt auch für PROJ-3.
 
 #### BUG-5: Esc/Klick außerhalb schließt den Kontakt-Dialog ohne Verwerfen-Rückfrage
 - **Severity:** Low
 - **Steps:** Kontakt bearbeiten, Nachname ändern, Esc drücken
 - **Expected:** Rückfrage „Änderungen verwerfen?" wie bei „Abbrechen"
 - **Actual:** Dialog schließt, Eingabe geht verloren (Sperre wird freigegeben)
-- **Priority:** Fix in next sprint
+- **Status:** BEHOBEN 2026-10-08 (Esc/Klick außerhalb/X laufen über dieselbe Rückfrage wie „Abbrechen")
 
 ### Beobachtungen (kein Fehler)
 - Länderkürzel- und Kennziffer-Felder kappen per `maxLength` im Browser; Überlängen sind nur über die API testbar (dort 400).
@@ -611,10 +612,10 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
 
 ### Summary
 - **Acceptance Criteria:** 48/48 bestanden
-- **Bugs Found:** 5 (0 critical, 1 high, 1 medium, 3 low)
+- **Bugs Found:** 5 (0 critical, 1 high, 1 medium, 3 low); **alle 5 behoben bzw. geklärt**, Nachtest 2026-10-08 bestanden (386 Unit-Tests; E2E alle PROJ-4-Tests grün, keine „known bugs" mehr offen)
 - **Security:** Pass (keine Sicherheitslücken; zwei Hinweise oben)
-- **Production Ready:** NO (wegen BUG-1, High)
-- **Recommendation:** BUG-1 beheben und `/qa` erneut ausführen; BUG-2 bis BUG-5 können danach oder parallel folgen.
+- **Production Ready:** YES (keine Critical/High-Bugs offen)
+- **Recommendation:** Deploy
 
 ## Deployment
 _To be added by /deploy_

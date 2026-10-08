@@ -28,8 +28,17 @@ export interface LockTarget {
   resourceId: string
 }
 
+/** Grammatikalisches Geschlecht der gesperrten Datensatzarten (für Artikel und Pronomen in Meldungen). */
+const FEMININE_NOUNS = new Set(["Adresse"])
+
+export function nounForms(noun: string) {
+  return FEMININE_NOUNS.has(noun)
+    ? { nominative: `Die ${noun}`, accusative: `die ${noun}`, pronoun: "sie" }
+    : { nominative: `Der ${noun}`, accusative: `den ${noun}`, pronoun: "ihn" }
+}
+
 export function lockedMessage(holder: LockHolder, noun = "Datensatz") {
-  return `Der ${noun} wird gerade von ${holder.username} bearbeitet. Du hast nur Lesezugriff.`
+  return `${nounForms(noun).nominative} wird gerade von ${holder.username} bearbeitet. Du hast nur Lesezugriff.`
 }
 
 export async function acquireLock(target: LockTarget): Promise<AcquireLockResult> {

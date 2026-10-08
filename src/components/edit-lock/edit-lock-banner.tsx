@@ -2,7 +2,7 @@ import { Clock, Lock } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import type { LockHolder } from "@/lib/edit-lock"
+import { nounForms, type LockHolder } from "@/lib/edit-lock"
 import type { UseEditLockResult } from "@/hooks/use-edit-lock"
 
 interface EditLockBannerProps {
@@ -34,7 +34,7 @@ export function EditLockBanner({
         <AlertDescription className="space-y-2">
           <p>
             {taken && lock.holder
-              ? `${lock.holder.username} bearbeitet den ${noun} jetzt. `
+              ? `${lock.holder.username} bearbeitet ${nounForms(noun).accusative} jetzt. `
               : `Nach 15 Minuten ohne Aktivität wurde die Sperre freigegeben. `}
             Deine Eingaben bleiben erhalten, können aber erst nach erneutem Sperren gespeichert
             werden.
@@ -70,7 +70,7 @@ export function EditLockBanner({
         <Lock className="h-4 w-4" aria-hidden="true" />
         <AlertTitle>Gesperrt – nur Lesezugriff</AlertTitle>
         <AlertDescription>
-          Der {noun} wird gerade von <strong>{blockedBy.username}</strong> bearbeitet. Du kannst ihn
+          {nounForms(noun).nominative} wird gerade von <strong>{blockedBy.username}</strong> bearbeitet. Du kannst {nounForms(noun).pronoun}
           ansehen, aber erst bearbeiten, wenn die Sperre freigegeben ist (spätestens nach 15 Minuten
           ohne Aktivität).
         </AlertDescription>
