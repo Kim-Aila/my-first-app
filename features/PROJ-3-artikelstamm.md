@@ -2,7 +2,9 @@
 
 ## Status: Deployed
 **Created:** 2026-09-27
-**Last Updated:** 2026-10-07
+**Last Updated:** 2026-10-08
+
+> **Refinement 2026-10-08 (geplant, Spec angepasst – Umsetzung gemeinsam mit PROJ-4):** Der Markeninhaber wird auf den Adressstamm (PROJ-4) umgestellt. Das Artikelfeld „Markeninhaber" wählt eine aktive Adresse mit gepflegtem Kürzel; der Matchcode nutzt das Kürzel der Adresse; die Merkmal-Tabelle „Markeninhaber" (inkl. Maske und Rechten) entfällt (aus 10 werden 9 Merkmal-Tabellen); vorhandene Testdaten dürfen bereinigt werden. Details und Acceptance Criteria: `features/PROJ-4-adressen.md` (Abschnitt „Umstellung Markeninhaber"). Die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand mit Merkmal-Tabelle Markeninhaber.
 
 > **Refinement 2026-10-07 (umgesetzt, QA bestanden, deployed 2026-10-07):** Nach dem Test wurden Basisartikelnummer, Matchcode, Bezeichnungs-Vorschlag, Palettenklasse als Merkmal-Tabelle, Verpackungsgruppe (4 Gewichtsfelder) und Reiter-Layout der Artikelmaske angepasst. Die Abschnitte „Datenfelder", „Acceptance Criteria", „Decision Log" sind bereits auf dem neuen Stand; die Abschnitte „Tech Design", „Implementation Notes" und „QA Test Results" beschreiben noch den Stand vom 2026-10-04. Siehe „Refinement 2026-10-07" am Ende.
 
@@ -14,7 +16,7 @@
 - Als Administrator möchte ich alle Artikeltypen (Rohstoff, Verpackung, Halbfertigware, Fertigware) in einem zentralen Artikelstamm verwalten, damit Daten nicht doppelt gepflegt werden.
 - Als Einkauf/Verkauf möchte ich Artikel anlegen und bearbeiten können, damit ich neue Produkte/Rohstoffe schnell erfassen kann.
 - Als Lager/Produktionsplanung möchte ich Artikeldaten einsehen können (Lesezugriff), damit ich ohne Rückfragen auf aktuelle Daten zugreifen kann.
-- Als Administrator möchte ich die Merkmal-Tabellen (Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, Palettenklasse, Mehrwertsteuersatz, Verpackungsgruppe) zentral pflegen, damit die Matchcode-/Warengruppenlogik konsistent bleibt.
+- Als Administrator möchte ich die Merkmal-Tabellen (Artikeltyp, Saison, Basisartikel, Form/Design, Packungsgröße, Geschmackssorte, Palettenklasse, Mehrwertsteuersatz, Verpackungsgruppe) zentral pflegen, damit die Matchcode-/Warengruppenlogik konsistent bleibt.
 - Als Nutzer möchte ich Artikel über einen automatisch erzeugten Matchcode finden und beim Anlegen einen Bezeichnungs-Vorschlag aus den gewählten Merkmalen erhalten, damit ich weniger tippen muss und Bezeichnungen einheitlich sind.
 - Als Nutzer, der einen Artikel bearbeitet, möchte ich vor gleichzeitigen Änderungen durch andere geschützt sein, damit meine Arbeit nicht überschrieben wird.
 
@@ -29,8 +31,8 @@
 - Warengruppe (automatisch berechnet: Saison-Ziffer (0–9) + Artikeltyp-Ziffer (0–9) + Platzhalter „0")
 - Artikelbezeichnung (frei bearbeitbar; wird als Vorschlag aus den **Bezeichnungen** von Basisartikel, Form/Design, Packungsgröße, Geschmackssorte vorbelegt, solange sie leer oder noch nicht manuell geändert wurde), Artikelbeschreibung (optional*)
 
-**Klassifizierung (optional*, Auswahl aus Merkmal-Tabellen mit Link zur Pflege-Maske):**
-Markeninhaber, Saison, Basisartikel (Merkmal, liefert Kürzel für Matchcode und Zolltarifnummer), Form/Design, Packungsgröße, Geschmackssorte
+**Klassifizierung (optional*, Auswahl aus Merkmal-Tabellen bzw. – beim Markeninhaber – aus dem Adressstamm, jeweils mit Link zur Pflege-Maske):**
+Markeninhaber (Auswahl einer aktiven Adresse mit Kürzel aus dem Adressstamm PROJ-4, mit Link zur Adressmaske), Saison, Basisartikel (Merkmal, liefert Kürzel für Matchcode und Zolltarifnummer), Form/Design, Packungsgröße, Geschmackssorte
 
 **Zertifizierungen (optional*, bool):** Fairtrade, Rainforest, FSC
 
@@ -42,9 +44,9 @@ Markeninhaber, Saison, Basisartikel (Merkmal, liefert Kürzel für Matchcode und
 
 *_Für MVP sind nur Artikelnummer Basisartikel + Artikelkennziffer Pflicht; feingranulare Pflichtfeld-Konfiguration je Artikeltyp folgt in PROJ-12._
 
-**Merkmal-Tabellen (je eine eigene Maske mit eigenen Rechten, 10 Stück):**
+**Merkmal-Tabellen (je eine eigene Maske mit eigenen Rechten, 9 Stück; „Markeninhaber" entfällt ab PROJ-4):**
 1. Artikeltyp — Kürzel, Bezeichnung, Warengruppen-Ziffer (0–9)
-2. Markeninhaber — Kürzel, Bezeichnung (spätere Umstellung auf Adresse: siehe Open Questions / PROJ-4)
+2. ~~Markeninhaber~~ — **entfällt mit PROJ-4**: Das Artikelfeld verweist auf eine Adresse mit Kürzel (Nummerierung der übrigen Tabellen bleibt zur Orientierung unverändert)
 3. Saison — Kürzel, Bezeichnung, Warengruppen-Ziffer (0–9)
 4. Basisartikel — Kürzel (für Matchcode), Bezeichnung, Zolltarifnummer
 5. Form/Design — Kürzel, Bezeichnung
@@ -66,7 +68,6 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 - Lagerbestände/Mengen — PROJ-5
 - Hard-Delete von Artikeln (nur Deaktivieren)
 - Mandantenübergreifende Stammdaten
-- Verknüpfung Markeninhaber ↔ Adresse/Kundenstamm — erst mit PROJ-4 (Feld zeigt dann direkt auf die Adresse, Kürzel wird dort gepflegt)
 
 ## Acceptance Criteria
 
@@ -74,7 +75,7 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 
 - [ ] Angenommen ein Nutzer mit Schreibrecht ist eingeloggt, wenn er einen neuen Artikel mit gültiger Basisartikelnummer (nur Ziffern, max. 10) und 4-stelliger Kennziffer anlegt, dann wird der Artikel gespeichert und die Artikelnummer automatisch als „Basisartikelnummer.Kennziffer" (z.B. 12345.0001) zusammengesetzt
 - [ ] Angenommen eine Basisartikelnummer enthält Buchstaben, ist leer oder länger als 10 Stellen, wenn der Nutzer speichern möchte, dann wird eine Validierungsfehlermeldung angezeigt und nicht gespeichert
-- [ ] Angenommen ein Nutzer wählt Artikeltyp, Markeninhaber, Saison, Basisartikel, Form/Design, Packungsgröße und Geschmackssorte, wenn er speichert, dann wird der Matchcode aus deren Kürzeln mit Bindestrich zusammengesetzt (fehlende Merkmale übersprungen) und ist in der Artikelliste durchsuchbar
+- [ ] Angenommen ein Nutzer wählt Artikeltyp, Markeninhaber (Adresse mit Kürzel), Saison, Basisartikel, Form/Design, Packungsgröße und Geschmackssorte, wenn er speichert, dann wird der Matchcode aus deren Kürzeln mit Bindestrich zusammengesetzt (fehlende Merkmale übersprungen) und ist in der Artikelliste durchsuchbar
 - [ ] Angenommen die Bezeichnung ist leer oder wurde nicht manuell geändert, wenn der Nutzer Basisartikel, Form/Design, Packungsgröße oder Geschmackssorte wählt, dann wird die Bezeichnung aus deren Bezeichnungen vorgeschlagen; eine manuell geänderte Bezeichnung wird nie überschrieben
 - [ ] Angenommen ein Administrator hat Palettenklassen (z.B. A–D) in der Merkmal-Tabelle angelegt, wenn ein Nutzer am Artikel die Palettenklasse wählt, dann steht nur diese Auswahl zur Verfügung (kein Freitext)
 - [ ] Angenommen ein Nutzer pflegt eine Verpackungsgruppe, wenn er sie speichert, dann kann er Folie und Pappe jeweils für Systembeteiligung und Transport (4 Gewichtsfelder in g) erfassen
@@ -107,7 +108,7 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 
 ## Open Questions
 - [ ] Soll Mischartikel künftig über eine stücklistenähnliche Verknüpfung zu anderen Artikeln (PROJ-11) abgebildet werden statt über feste Mehrfach-GTIN-Felder? (Nutzer wollte nach Bedenkzeit entscheiden)
-- [ ] Markeninhaber mit Kundenstamm/Adresse verknüpfen → bewusst verschoben: Mit PROJ-4 zeigt das Feld Markeninhaber direkt auf die Adresse, das Kürzel wird dort gepflegt (2026-10-07). Bei `/write-spec` für PROJ-4 berücksichtigen.
+- [x] ~~Markeninhaber mit Kundenstamm/Adresse verknüpfen~~ → Mit PROJ-4 zeigt das Feld Markeninhaber direkt auf eine aktive Adresse mit Kürzel; Merkmal-Tabelle entfällt (2026-10-08, siehe `features/PROJ-4-adressen.md`)
 - [x] ~~Ist „Artikelnummer Basisartikel" identisch mit dem Kürzel aus der Basisartikel-Merkmaltabelle oder ein unabhängiges Freitextfeld?~~ → 2026-10-04 Auswahl aus Merkmaltabelle; **revidiert 2026-10-07**: unabhängiges Zifferfeld am Artikel, Merkmal-Tabelle liefert nur Kürzel für den Matchcode
 - [x] ~~Warengruppe: Ziffer bei fehlender Saison/Artikeltyp?~~ → „0" als Ersatzziffer (2026-10-04)
 - [x] ~~Standard-Artikeltypen bei neuem Mandanten automatisch vorbefüllen?~~ → Nein, Merkmal-Tabellen starten leer (2026-10-04)
@@ -139,6 +140,7 @@ Jedes Auswahlfeld mit Tabellenbezug ist über Klick auf die Feldbezeichnung mit 
 | Artikelmaske: Abschnitte als Reiter (Karteikarten), nur gewählter Reiter sichtbar; Kopfzeile fix; ein Formular, Fehler-Markierung am Reiter | Übersichtlichkeit bei vielen Feldern | 2026-10-07 |
 | Markeninhaber-Verknüpfung zu Adressen erst mit PROJ-4, Markeninhaber bleibt jetzt unverändert | Kundenstamm existiert noch nicht; später zeigt das Feld direkt auf die Adresse | 2026-10-07 |
 | Bestehende Testdaten dürfen bei der Umstellung bereinigt werden, keine aufwendige Datenmigration | Nutzerentscheidung: nur Testdaten vorhanden | 2026-10-07 |
+| Markeninhaber am Artikel verweist ab PROJ-4 auf eine aktive Adresse mit Kürzel; Merkmal-Tabelle Markeninhaber entfällt; Matchcode nutzt das Adress-Kürzel und wird bei Kürzeländerung neu berechnet | Keine zweite Pflegestelle für Markeninhaber; Umsetzung der am 2026-10-07 vorgesehenen Verknüpfung (Entscheidung im Interview zu PROJ-4) | 2026-10-08 |
 
 ### Technical Decisions
 <!-- Added by /architecture -->
