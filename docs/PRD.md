@@ -14,7 +14,7 @@ Ein modulares ERP-System für eine Schokoladenfabrik (Manufaktur), das schrittwe
 |----------|---------|--------|
 | P0 (MVP) | Basis: Auth, Benutzerverwaltung, Rollen-/Rechtesystem (pro Maske), Multi-Tenant-Grundgerüst, Self-hosted Supabase | Deployed |
 | P0 (MVP) | Warenwirtschaft – Artikelstamm | Deployed |
-| P1 | Warenwirtschaft – Adressen | Planned |
+| P1 | Warenwirtschaft – Adressen | Deployed |
 | P1 | Warenwirtschaft – Einkauf | Roadmap |
 | P1 | Warenwirtschaft – Verkauf | Roadmap |
 | P1 | Warenwirtschaft – Lager | Roadmap |

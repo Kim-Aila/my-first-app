@@ -1,6 +1,6 @@
 # PROJ-4: Warenwirtschaft – Adressen
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-10-08
 **Last Updated:** 2026-10-08
 
@@ -618,4 +618,23 @@ Keine neuen Pakete. Vorhandene shadcn/ui-Bausteine (Tabs, Table, Pagination, Com
 - **Recommendation:** Deploy
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-10-08
+**Ziel:** wie bei PROJ-1 bis 3 der selbst gehostete Docker-Container `my-first-app-app-1` (nicht Vercel, laut PRD lokal), neu gebaut und neu erstellt; dahinter die lokale, selbst gehostete Supabase-Instanz. Die Migrationen `20261008100000` und `20261008100100` waren bereits seit `/backend` angewendet (`supabase migration list --local`: alle 11 Migrationen lokal = angewendet).
+**Zugriff:** `http://localhost:3001` (nur an `127.0.0.1` gebunden)
+**Git-Tag:** `v1.4.0-PROJ-4` (lokal; nicht gepusht, wie bisher)
+
+**Pre-Deployment-Checks (alle bestanden):**
+- `npm run lint` sauber; `npm test` 386/386; `npm run build` erfolgreich, neue Routen vorhanden (`/adressen`, `/adressen/[addressId]`, `/adressen/neu`, `/kontakte`, `/api/tenants/[tenantId]/addresses|contacts|locks`)
+- QA: Approved (48/48 Acceptance Criteria), keine Critical/High-Bugs offen, alle 5 QA-Bugs behoben bzw. geklärt
+- Keine Secrets committet (nur `.env.local.example` versioniert); keine neuen Umgebungsvariablen
+- Arbeitsverzeichnis sauber, alles committet
+
+**Verifikation gegen `http://localhost:3001`:**
+- ohne Anmeldung: `/login` 200; `/`, `/adressen`, `/kontakte`, `/adressen/neu` 307 auf Login; `POST …/addresses` und `GET …/addresses/options` 401
+- `tests/PROJ-4-adressen.spec.ts` (Chromium) gegen den Container: 65/65 bestanden, Testdaten bereinigt
+- keine Fehler in den Container-Logs
+
+**Weiterhin offen (bestehende Schuld, nicht durch PROJ-4):**
+- Fehler-Tracking (`docs/production/error-tracking.md`) und Security-Header (`docs/production/security-headers.md`) nicht eingerichtet; kein Rate-Limiting an den API-Routen
+- Nicht auf das GitHub-Remote gepusht
