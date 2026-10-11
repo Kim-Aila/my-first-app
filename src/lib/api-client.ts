@@ -82,3 +82,45 @@ export async function apiGet<T = unknown>(url: string, signal?: AbortSignal): Pr
     field: typeof payload.field === "string" ? payload.field : undefined,
   }
 }
+
+/** Datei-Upload (multipart) an eine eigene /api-Route, z. B. der Lagerbestand-Import (PROJ-5). */
+export async function apiUpload<T = unknown>(
+  url: string,
+  file: File,
+  signal?: AbortSignal
+): Promise<ApiResult<T>> {
+  const body = new FormData()
+  body.append("file", file)
+
+  let res: Response
+  try {
+    res = await fetch(url, { method: "POST", body, signal })
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error
+    return { ok: false, status: 0, error: CONNECTION_ERROR_MESSAGE }
+  }
+
+  let data: unknown = null
+  try {
+    data = await res.json()
+  } catch {
+    data = null
+  }
+
+  if (res.ok) return { ok: true, data: data as T }
+
+  const payload = (data ?? {}) as { error?: unknown; field?: unknown }
+  return {
+    ok: false,
+    status: res.status,
+    error:
+      typeof payload.error === "string" && payload.error.length > 0
+        ? payload.error
+        : res.status === 403
+          ? "Dafür fehlt dir die Berechtigung."
+          : res.status === 413
+            ? "Die Datei ist zu groß."
+            : "Die Datei konnte nicht verarbeitet werden. Bitte versuche es erneut.",
+    field: typeof payload.field === "string" ? payload.field : undefined,
+  }
+}

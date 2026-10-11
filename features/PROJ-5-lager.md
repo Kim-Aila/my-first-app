@@ -1,6 +1,6 @@
 # PROJ-5: Warenwirtschaft – Lager (Lagerebene, CSV-Import)
 
-## Status: Architected
+## Status: In Progress
 **Created:** 2026-10-11
 **Last Updated:** 2026-10-11
 
@@ -291,6 +291,36 @@ Wiederverwendet (nichts Neues bauen): Tabelle, Seitenwechsel, Reiter, Seitenpane
 
 ### G) Umsetzungsreihenfolge
 Empfohlen: `/frontend` (Reiter, Import-Assistent, LHM-Detail mit Beispieldaten) → `/backend` (Tabellen, Import-Logik, Rechte, Bereinigung) → `/qa`.
+
+## Implementation Notes (Frontend)
+
+### Gebaut
+- **Seite:** `/lagerbestand` mit 4 Reitern (Bestand je Artikel, LHM-Liste, Prüfliste mit Zähler, Import). Aktiver Reiter, Filter und Seite stehen in der URL (`reiter`, `q`, `status`, `unbekannt`, `mischpalette`, `seite`, `mandant`); Listen laden serverseitig gefiltert und seitenweise (25 je Seite). Nutzer mit nur Leserecht sehen den Reiter „Import“ nicht und keine Aktionen.
+- **Komponenten** (`src/components/lager/`): `stock-tabs-nav`, `stock-filters`, `position-table` (+ Aktionsspalte in der Prüfliste), `position-detail-sheet` (Seitenpanel mit Daten, Prüf-/Versandinfo, Import-Verlauf), `position-actions` (Dialog „Geprüft i.O.“ mit optionaler Bemerkung, Rückfrage „Als versendet buchen“, Statuskonflikt-Hinweis bei 409), `import-wizard` (Datei → Vorschau → Übernehmen → Ergebnis; Warnung und Zusatzbestätigung bei 0 Datensätzen; Fehler und übersprungene Zeilen getrennt; Liste unbekannter Artikelnummern), `import-log-table`, `article-stock-panel`.
+- **Artikelmaske (PROJ-3):** neuer schreibgeschützter Reiter „Bestand“ (nur bei vorhandenem Artikel und Leserecht auf „Lagerbestand“), mit Link zur gefilterten LHM-Liste.
+- **Bibliotheken:** `lib/stock.ts` (Typen, Status, Mapper, Formatierung; Tests in `stock.test.ts`), `apiUpload` in `lib/api-client.ts`, Maske `MASK_LAGERBESTAND` im Register, Sidebar-Eintrag „Lagerbestand“.
+- **Stand:** 393 Unit-Tests grün, `tsc`, `npm run lint` und `npm run build` ohne Fehler.
+
+### Abweichungen / Interpretationen (bitte bestätigen)
+- **Prüfliste** sortiert nach „zuletzt im Abzug gesehen“, neueste zuerst; die LHM-Liste nach SSCC und Artikelnummer, Standardfilter „Alle Status“.
+- **Import-Protokoll** zeigt die letzten 20 Importe (ohne Detailansicht zu Fehlern/Übersprungenen früherer Importe).
+- **Import-Reiter** ist für Nutzer mit nur Leserecht komplett ausgeblendet.
+- **Maximale Dateigröße** im Frontend: 25 MB.
+- **Live-Prüfung im Browser** war nicht möglich: Ohne die von `/backend` angelegten Tabellen/Sichten und Routen zeigen die Seiten den Fehlerzustand (wie bei PROJ-3/4).
+
+### Annahmen für `/backend` (Frontend ruft das schon so auf)
+**Tabellen / Sichten** (alle mit `tenant_id`, RLS wie PROJ-3):
+- `stock_positions`: `id, tenant_id, sscc, article_number, quantity, free_quantity, qs_quantity, blocked_quantity, qs_and_blocked_quantity, unit, logistics_center, stock_group, status ('in_stock' | 'missing_unchecked' | 'missing_checked' | 'shipped'), checked_by, checked_at, check_remark, shipped_by, shipped_at, first_seen_at, last_seen_at, updated_at, last_import_id`; eindeutig je `(tenant_id, sscc, article_number)`.
+- `stock_position_list` (Sicht): Spalten der Position plus `article_id`, `article_name` (Verknüpfung über die Artikelnummer, leer bei unbekanntem Artikel) und `is_mixed_pallet`.
+- `stock_by_article` (Sicht): `tenant_id, article_number, article_id, article_name, stock, qs_blocked, blocked, blocked_total, available` als Summe über Status „Im Lager“.
+- `stock_imports`: `id, tenant_id, file_name, user_name, created_at, new_count, changed_count, unchanged_count, missing_count, reappeared_count, skipped_count, error_count`.
+- Maskenschlüssel `warenwirtschaft:lagerbestand` im Masken-Register/Standardrechten (Lesen/Bearbeiten).
+
+**Routen** (unter `/api/tenants/:tenantId`, Fehlerformat `{ error, field? }`):
+- `POST stock/imports/preview` (multipart, Feld `file`) → `ImportOutcome` (`lib/stock.ts`); speichert nichts. Ganze Datei ungültig (kein `BestandEnde`, Zähler weicht ab, nicht lesbar) → 400 mit verständlicher `error`.
+- `POST stock/imports` (multipart, Feld `file`) → `ImportOutcome`; rechnet neu, speichert unteilbar und legt das Protokoll an. Läuft schon ein Import → 409.
+- `GET stock/positions/:id` → `StockPositionDetail` (inkl. `imports`: Importe, in denen die Position vorkam).
+- `POST stock/positions/:id/check` Body `{ expectedStatus, remark }` und `POST stock/positions/:id/ship` Body `{ expectedStatus }`; abweichender Status → 409 mit Hinweistext; Recht „Lesen + Bearbeiten“ erforderlich.
 
 ## QA Test Results
 _To be added by /qa_

@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { UnsavedChangesProvider } from "@/components/unsaved-changes-provider"
-import { MASK_ADRESSEN, MASK_ARTIKELSTAMM, MASK_KONTAKTE } from "@/lib/masks"
+import { MASK_ADRESSEN, MASK_ARTIKELSTAMM, MASK_KONTAKTE, MASK_LAGERBESTAND } from "@/lib/masks"
 import { MERKMALE, merkmalHref } from "@/lib/merkmale"
 import { getSessionContext } from "@/lib/session-context"
 import { tenantsWithMask } from "@/lib/tenant-access"
@@ -21,6 +21,7 @@ export default async function AppLayout({
   const canViewArticles = tenantsWithMask(session, MASK_ARTIKELSTAMM).length > 0
   const canViewAddresses = tenantsWithMask(session, MASK_ADRESSEN).length > 0
   const canViewContacts = tenantsWithMask(session, MASK_KONTAKTE).length > 0
+  const canViewStock = tenantsWithMask(session, MASK_LAGERBESTAND).length > 0
   const merkmalItems = MERKMALE.filter((m) => tenantsWithMask(session, m.mask).length > 0).map(
     (m) => ({ title: m.plural, href: merkmalHref(m) })
   )
@@ -35,6 +36,7 @@ export default async function AppLayout({
           canViewArticles={canViewArticles}
           canViewAddresses={canViewAddresses}
           canViewContacts={canViewContacts}
+          canViewStock={canViewStock}
           merkmalItems={merkmalItems}
         />
         <SidebarInset className="min-w-0">

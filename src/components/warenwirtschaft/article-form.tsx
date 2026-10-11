@@ -52,6 +52,7 @@ import {
   type Article,
   type ArticleFormValues,
 } from "@/lib/articles"
+import { ArticleStockPanel, type ArticleStockState } from "@/components/lager/article-stock-panel"
 import { formatDecimal } from "@/lib/decimal"
 import type { LockHolder } from "@/lib/edit-lock"
 import { getMerkmalByArticleKey } from "@/lib/merkmale"
@@ -91,6 +92,8 @@ const TABS = [
     ],
   },
   { id: "steuern", title: "Steuern & Zoll", fields: ["vatRateId", "customsTariffNumber"] },
+  // PROJ-5: schreibgeschützter Reiter, nur bei vorhandenem Artikel und Leserecht auf "Lagerbestand".
+  { id: "bestand", title: "Bestand", fields: [] },
 ] as const
 
 type TabId = (typeof TABS)[number]["id"]
@@ -117,6 +120,8 @@ interface ArticleFormProps {
   /** User darf die Adressmaske öffnen (Link im Feld, Anlegen-Link im Leerhinweis). */
   canOpenAddresses: boolean
   canWrite: boolean
+  /** PROJ-5: Lagerwerte; `null` = kein Leserecht auf "Lagerbestand" (Reiter wird nicht angezeigt). */
+  stock?: ArticleStockState | null
   /** Fremde Sperre, die beim Laden der Seite bereits bestand. */
   lockedBy: LockHolder | null
 }
@@ -140,6 +145,7 @@ export function ArticleForm({
   brandOwner,
   canOpenAddresses,
   canWrite,
+  stock = null,
   lockedBy,
 }: ArticleFormProps) {
   const router = useRouter()
@@ -167,6 +173,7 @@ export function ArticleForm({
   })
   const { isDirty, errors } = form.formState
   const errorTabs = tabsWithErrors(errors)
+  const visibleTabs = TABS.filter((tab) => tab.id !== "bestand" || (stock !== null && !isNew))
 
   const lockLost = lock.status === "lost"
   const fieldsDisabled = !isEditing || lockLost || saving
@@ -538,7 +545,7 @@ export function ArticleForm({
           <form onSubmit={onSubmit} noValidate className="space-y-4">
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabId)}>
               <TabsList className="mb-2 h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
-                {TABS.map((tab) => {
+                {visibleTabs.map((tab) => {
                   const hasError = errorTabs.includes(tab.id)
                   return (
                     <TabsTrigger
@@ -711,6 +718,16 @@ export function ArticleForm({
                   />
                 </div>
               </Section>
+
+              {stock !== null && article && (
+                <Section id="bestand">
+                  <ArticleStockPanel
+                    stock={stock}
+                    articleNumber={article.articleNumber}
+                    tenantId={tenantId}
+                  />
+                </Section>
+              )}
             </Tabs>
           </form>
         </Form>

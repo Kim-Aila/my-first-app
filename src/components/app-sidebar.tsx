@@ -13,6 +13,7 @@ import {
   LogOut,
   MapPinned,
   Package,
+  Warehouse,
   ShieldCheck,
   UserRound,
   Users,
@@ -64,6 +65,8 @@ export interface AppSidebarProps {
   /** PROJ-4: Adressen bzw. Kontakte (jeweils mindestens Lesezugriff in einem Mandanten). */
   canViewAddresses: boolean
   canViewContacts: boolean
+  /** PROJ-5: Lagerbestand (mindestens Lesezugriff in einem Mandanten). */
+  canViewStock: boolean
   merkmalItems: { title: string; href: string }[]
 }
 
@@ -190,6 +193,7 @@ export function AppSidebar({
   canViewArticles,
   canViewAddresses,
   canViewContacts,
+  canViewStock,
   merkmalItems,
 }: AppSidebarProps) {
   const pathname = usePathname()
@@ -221,6 +225,9 @@ export function AppSidebar({
   }
   if (canViewContacts) {
     warenItems.push({ title: "Kontakte", href: "/kontakte", icon: BookUser })
+  }
+  if (canViewStock) {
+    warenItems.push({ title: "Lagerbestand", href: "/lagerbestand", icon: Warehouse })
   }
 
   const adminItems: NavItem[] = []

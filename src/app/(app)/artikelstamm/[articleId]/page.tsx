@@ -4,12 +4,14 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/page-header"
 import { EmptyState, LoadErrorAlert, NoAccessCard } from "@/components/state-messages"
+import type { ArticleStockState } from "@/components/lager/article-stock-panel"
 import { ArticleForm } from "@/components/warenwirtschaft/article-form"
 import { loadAddressOptions } from "@/lib/address-data"
 import { loadForeignArticleLock, loadReferences } from "@/lib/article-data"
 import { ARTICLE_COLUMNS, rowToArticle } from "@/lib/articles"
-import { MASK_ADRESSEN, MASK_ARTIKELSTAMM } from "@/lib/masks"
+import { MASK_ADRESSEN, MASK_ARTIKELSTAMM, MASK_LAGERBESTAND } from "@/lib/masks"
 import { getSessionContext } from "@/lib/session-context"
+import { ARTICLE_STOCK_COLUMNS, rowToArticleStock } from "@/lib/stock"
 import { createClient as createServerClient } from "@/lib/supabase-server"
 import {
   getAccessLevel,
@@ -88,6 +90,25 @@ export default async function ArtikelDetailPage({
     ? ((await loadAddressOptions(supabase, tenant.id, [brandOwnerId]))[brandOwnerId] ?? null)
     : null
 
+  // PROJ-5: Lagerwerte nur mit Leserecht auf "Lagerbestand"; Fehler blenden nur den Reiterinhalt aus.
+  let stock: ArticleStockState | null = null
+  if (getAccessLevel(session, tenant.id, MASK_LAGERBESTAND) !== null) {
+    const stockResult = await supabase
+      .from("stock_by_article")
+      .select(ARTICLE_STOCK_COLUMNS)
+      .eq("tenant_id", tenant.id)
+      .eq("article_number", article.articleNumber)
+      .maybeSingle()
+    stock = stockResult.error
+      ? { state: "error" }
+      : {
+          state: "ok",
+          values: stockResult.data
+            ? rowToArticleStock(stockResult.data as unknown as Record<string, unknown>)
+            : null,
+        }
+  }
+
   return (
     <ArticleForm
       // Nach dem Speichern liefert der Server einen neuen Stand → Formular frisch aufbauen.
@@ -99,6 +120,7 @@ export default async function ArtikelDetailPage({
       brandOwner={brandOwner}
       canOpenAddresses={getAccessLevel(session, tenant.id, MASK_ADRESSEN) !== null}
       canWrite={canWrite}
+      stock={stock}
       lockedBy={lockedBy}
     />
   )

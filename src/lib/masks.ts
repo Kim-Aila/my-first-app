@@ -125,11 +125,22 @@ export const MASK_KONTAKTE: MaskDefinition = {
 }
 export const MASK_MERKMAL_LAENDER = merkmalMask("merkmal_laender", "Länder", "Länder pflegen")
 
+// PROJ-5: Lagerbestand auf Lagerebene (LHM-Positionen, Import, Prüfung, manuelle Versandbuchung).
+export const MASK_LAGERBESTAND: MaskDefinition = {
+  module: "warenwirtschaft",
+  maske: "lagerbestand",
+  label: "Lagerbestand",
+  description: "Lagerbestand ansehen; mit Bearbeiten: Bestand importieren, fehlende LHM prüfen, Versand buchen",
+  group: WAREN,
+  supportsReadOnly: true,
+}
+
 export const MASKS: MaskDefinition[] = [
   MASK_BENUTZERVERWALTUNG,
   MASK_ARTIKELSTAMM,
   MASK_ADRESSEN,
   MASK_KONTAKTE,
+  MASK_LAGERBESTAND,
   MASK_MERKMAL_ARTIKELTYP,
   MASK_MERKMAL_SAISON,
   MASK_MERKMAL_BASISARTIKEL,
