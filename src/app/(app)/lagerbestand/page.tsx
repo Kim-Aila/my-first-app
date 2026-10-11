@@ -221,10 +221,12 @@ export default async function LagerbestandPage({ searchParams }: { searchParams:
                       )}
                     </TableCell>
                     <TableCell>
-                      {row.articleName ?? (
+                      {!row.articleId ? (
                         <Badge variant="outline" className="border-[#9A3412]/40 font-normal text-[#9A3412]">
                           Nicht im Stamm
                         </Badge>
+                      ) : (
+                        row.articleName
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{formatQuantity(row.stock)}</TableCell>

@@ -81,11 +81,11 @@ export function PositionTable({
                   </TableCell>
                   <TableCell>
                     <span className="tabular-nums">{row.articleNumber}</span>
-                    {row.articleName ? (
-                      <div className="text-xs text-muted-foreground">{row.articleName}</div>
-                    ) : (
+                    {!row.articleId ? (
                       <div className="text-xs text-[#9A3412]">Artikel nicht im Stamm</div>
-                    )}
+                    ) : row.articleName ? (
+                      <div className="text-xs text-muted-foreground">{row.articleName}</div>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatQuantity(row.quantity)}

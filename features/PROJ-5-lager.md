@@ -376,9 +376,9 @@ Empfohlen: `/frontend` (Reiter, Import-Assistent, LHM-Detail mit Beispieldaten) 
 - XSS: HTML in Einheit/Logistikzentrum wird als Text angezeigt, kein Script. Such-Injection (`'; drop`, PostgREST-`or`-Syntax, Sonderzeichen): kein Fehler, nichts verändert. XML-Entity-Expansion/DOCTYPE: kein Absturz, < 10 s. Fehlerantworten ohne SQL-Details/Secrets.
 
 ### Bugs
-- **BUG-1 (Medium) — Artikel ohne Bezeichnung zeigt „Nicht im Stamm“.** Die Bezeichnung ist im Artikelstamm optional. `lagerbestand/page.tsx` (Reiter „Bestand“) und `position-table.tsx` erkennen „unbekannt“ an `article_name` statt `article_id`; der Filter „nicht im Stamm“ nutzt dagegen `article_id` → Badge und Filter widersprechen sich, der Hinweis verschwindet nicht (verletzt AC „Hinweis verschwindet“). Reproduktion: Artikel ohne Bezeichnung anlegen, passende Position importieren, `/lagerbestand` öffnen. Regressionstest: `BUG-1` in der E2E-Suite (`test.fail`, schlägt nach dem Fix an → dann `test.fail` entfernen).
+- **BUG-1 (Medium, BEHOBEN 2026-10-11) — Artikel ohne Bezeichnung zeigt „Nicht im Stamm“.** Die Bezeichnung ist im Artikelstamm optional. `lagerbestand/page.tsx` (Reiter „Bestand“) und `position-table.tsx` erkennen „unbekannt“ an `article_name` statt `article_id`; der Filter „nicht im Stamm“ nutzt dagegen `article_id` → Badge und Filter widersprechen sich, der Hinweis verschwindet nicht (verletzt AC „Hinweis verschwindet“). Reproduktion: Artikel ohne Bezeichnung anlegen, passende Position importieren, `/lagerbestand` öffnen. Fix: „unbekannt“ wird jetzt an `article_id` erkannt (`page.tsx`, `position-table.tsx`). Regressionstest `BUG-1` in der E2E-Suite grün.
 - **BUG-2 (Low) — 0-Datensatz-Schutz nur in der Oberfläche.** `POST stock/imports` übernimmt eine Datei mit 0 Datensätzen ohne Zusatzbestätigung (markiert den gesamten Bestand als fehlend). Für spätere Agenten/Schnittstelle ggf. serverseitigen Schutz (z. B. Bestätigungsparameter) ergänzen.
-- **Hinweis Deployment (kein Bug):** `pg_cron` ist lokal nicht installiert; `stock_cleanup()` muss im Produktivsystem täglich eingeplant werden (siehe Implementation Notes). Fachlich offen bleibt die Open Question zu Artikelnummern ohne Kennziffer (27 % der Beispieldatei werden übersprungen).
+- **pg_cron (erledigt lokal 2026-10-11):** Die Erweiterung ist im lokalen DB-Container vorhanden und vorgeladen; der Job `proj5-stock-cleanup` (täglich 03:15, `select public.stock_cleanup()`) wurde angelegt (die Migration hatte ihn nicht erzeugt). Im Produktivsystem denselben Job prüfen: `select * from cron.job;`. Fachlich offen bleibt die Open Question zu Artikelnummern ohne Kennziffer (27 % der Beispieldatei werden übersprungen).
 
 ### Regression
 PROJ-1–4: 460 Unit-Tests grün; Artikelmaske (PROJ-3) mit neuem Reiter „Bestand“ geprüft (Reiter ohne Leserecht nicht vorhanden). E2E-Suites PROJ-1–4 nicht erneut vollständig ausgeführt.
@@ -387,7 +387,7 @@ PROJ-1–4: 460 Unit-Tests grün; Artikelmaske (PROJ-3) mit neuem Reiter „Best
 375 / 768 / 1440 px auf allen vier Reitern: kein horizontaler Seitenüberlauf (Screenshots in `test-results`).
 
 ### Entscheidung
-**Production-ready: JA** — keine Critical/High-Bugs. Empfehlung: BUG-1 vor dem Deploy beheben (kleiner Fix).
+**Production-ready: JA** — keine Critical/High-Bugs. BUG-1 ist behoben; BUG-2 (niedrig) bleibt offen.
 
 ## Deployment
 _To be added by /deploy_

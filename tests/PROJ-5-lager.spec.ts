@@ -568,7 +568,6 @@ test.describe("Artikelnummer und Artikelstamm", () => {
   })
 
   test("BUG-1: an article without a Bezeichnung is not shown as 'Nicht im Stamm'", async ({ page }, testInfo) => {
-    test.fail(true, "BUG-1: the list decides 'unknown' by article_name instead of article_id")
     const w = await mkWorld(testInfo)
     await login(page, w.username.writer)
     const article = await mkArticle(w, "0451", null) // name is optional in the Artikelstamm
