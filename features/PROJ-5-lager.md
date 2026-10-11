@@ -140,7 +140,8 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 - [ ] Einheitenprüfung und Pflichtfeld „Einheit" im Artikelstamm (später, `/refine PROJ-3`); bis dahin ist die Einheit nur gespeichert
 - [ ] Losnummer, MHD, Lagerbereich/Lagerort: Dateiformat und Verwendung, sobald die Felder im XML geliefert werden (`/refine PROJ-5`)
 - [ ] Bedeutung von `rlzMenge` (derzeit ignoriert)
-- [ ] Zeitplaner für die 5-Jahres-Bereinigung im Self-hosted-Supabase (pg_cron oder externer Aufruf) — in `/backend` klären
+- [x] ~~Zeitplaner für die 5-Jahres-Bereinigung~~ → 2026-10-11: Funktion `stock_cleanup()` + pg_cron, falls verfügbar; sonst täglicher externer Aufruf (lokal ist pg_cron nicht installiert)
+- [ ] Artikelnummern ohne Kennziffer-Format (z.B. `V554`, `9998`; 858 von 3.227 Zeilen der Beispieldatei, Einheiten Stück/Meter): weiterhin überspringen oder eigenes Format zulassen? (`/refine PROJ-5`)
 
 ## Decision Log
 
@@ -179,6 +180,8 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 | 5-Jahres-Bereinigung als täglich laufende Datenbank-Aufgabe | Unabhängig von Nutzeraktionen; Zeitplaner im Self-hosted-Setup in `/backend` klären | 2026-10-11 |
 | Neue Pakete: CSV-Leser (papaparse) und XML-Leser (fast-xml-parser) | Zuverlässiges Lesen von Semikolon-CSV mit Umlauten und XML in Spalte | 2026-10-11 |
 | Eine Maske „Lagerbestand" mit 4 Reitern (Bestand je Artikel, LHM-Liste, Prüfliste, Import) | Eine Rechte-Einheit, passt zur Spec (Maske „Lagerbestand") | 2026-10-11 |
+| Schreibzugriff nur über Datenbankfunktionen (Import, Prüfen, Versand, Bereinigung); Sichten mit Eigentümerrechten und eigenem Maskenfilter | Statuswechsel nicht umgehbar; Lagerleser brauchen kein Recht auf Artikelstamm/Benutzer (Nutzerentscheidung 2026-10-11) | 2026-10-11 |
+| Datei wird in Node gelesen und geprüft, Abgleich und Speichern in einer Datenbankfunktion (Vorschau = gleiche Funktion ohne Speichern) | Vorschau und Übernahme rechnen garantiert identisch; Mengenoperationen statt Zeile für Zeile | 2026-10-11 |
 
 ---
 
@@ -321,6 +324,34 @@ Empfohlen: `/frontend` (Reiter, Import-Assistent, LHM-Detail mit Beispieldaten) 
 - `POST stock/imports` (multipart, Feld `file`) → `ImportOutcome`; rechnet neu, speichert unteilbar und legt das Protokoll an. Läuft schon ein Import → 409.
 - `GET stock/positions/:id` → `StockPositionDetail` (inkl. `imports`: Importe, in denen die Position vorkam).
 - `POST stock/positions/:id/check` Body `{ expectedStatus, remark }` und `POST stock/positions/:id/ship` Body `{ expectedStatus }`; abweichender Status → 409 mit Hinweistext; Recht „Lesen + Bearbeiten“ erforderlich.
+
+## Implementation Notes (Backend)
+
+### Gebaut
+- **Migrationen** (lokal angewendet, `supabase/migrations/`): `20261011100000_proj5_tables.sql` (Tabellen `stock_imports`, `stock_positions`, `stock_import_positions`; Funktionen `stock_import`, `stock_check_position`, `stock_ship_position`, `stock_cleanup`; pg_cron-Einplanung falls verfügbar) und `20261011100100_proj5_rls.sql` (RLS, Sichten `stock_position_list` / `stock_by_article`, Standardrechte).
+- **Rechte/RLS (vom Nutzer freigegeben):** Lesen aller drei Tabellen mit Maske „Lagerbestand“ (read/write) im eigenen Mandanten; **kein** direktes INSERT/UPDATE/DELETE für Clients (keine Policies, Tabellenrechte entzogen). Geschrieben wird nur über die vier Funktionen (SECURITY DEFINER, Maskenrecht `write` wird in der Funktion geprüft). Die Sichten laufen mit Eigentümerrechten und filtern selbst auf Mandant + Maskenrecht, damit Lagerleser Artikelnamen und Prüfer-Namen sehen, ohne Recht auf Artikelstamm/Benutzer. Standardrechte: Rollen mit Benutzerverwaltung erhalten „Lagerbestand“ mit Lesen + Bearbeiten.
+- **Import:** Server liest die CSV (`lib/stock-import.ts`: papaparse + fast-xml-parser), prüft Plausibilität (BestandEnde, `anzahlDatensaetze`), Zeilen, Artikelnummern, Mengen, Duplikate und übergibt das Ergebnis an `stock_import`. Dieselbe Funktion rechnet die Vorschau (`p_commit = false`, schreibt nichts) und die Übernahme (`p_commit = true`: eine Transaktion, Import-Sperre je Mandant per Advisory-Lock → 409, Bestand des Mandanten wird für die Dauer gesperrt, damit gleichzeitige Prüfungen/Buchungen sauber warten).
+- **Routen** (alle unter `/api/tenants/:tenantId/stock`): `POST imports/preview`, `POST imports`, `GET positions/:id`, `POST positions/:id/check`, `POST positions/:id/ship`; gemeinsame Logik in `api/tenants/stock-shared.ts`. Fehlerformat `{ error, field? }`; 401/403/404/409/413/400 wie in der Spec.
+- **Tests:** 22 Parser-Tests (`lib/stock-import.test.ts`), 45 Routen-Tests (`stock/stock.test.ts`), DB-Test `supabase/tests/proj5_rls.sql` (RLS, Sichten, Import-Lebenszyklus, Prüfung, Versand, Bereinigung; „ALL OK“ auf der lokalen DB). Gesamt: 460 Unit-Tests grün, `tsc`, `npm run lint`, `npm run build` ohne Fehler.
+- **Performance (lokal, 5.000 Positionen):** Vorschau ~20 ms, Übernahme ~150 ms, paginierte Listenabfrage ~3 ms, Summen-Sicht ~200 ms.
+
+### Abweichungen / Interpretationen (bitte bestätigen)
+- **Bereinigung:** entfernt nur Positionen mit Status ≠ „Im Lager“ und letzter Änderung > 5 Jahre. Eine unverändert noch vorhandene Position bekommt beim erneuten Sehen im Abzug nur `last_seen_at`, nicht `updated_at` — ohne diese Ausnahme würde der Lagerbestand nach 5 Jahren verschwinden und beim nächsten Import als „neu“ auftauchen.
+- **Wieder aufgetauchte Position:** die Prüfinformation der Fehlt-Phase (Prüfer, Zeit, Bemerkung) wird gelöscht; der Verlauf bleibt über das Import-Protokoll nachvollziehbar.
+- **Versandbuchung** geht auch aus „Fehlt, geprüft i.O.“ (nicht nur aus „ungeprüft“), weil die Versandbuchung verspätet eintreffen kann. Die Oberfläche bietet Aktionen weiterhin nur bei „Fehlt, ungeprüft“ an. Prüfinformation bleibt bei der Versandbuchung erhalten.
+- **Duplikate (gleiche SSCC + Artikel)** erscheinen als Fehler (nicht zusätzlich als übersprungene Zeilen). Ein bereits versendetes LHM, das wieder im Abzug steht, ebenso.
+- **Zeilennummern** der übersprungenen Zeilen = Zeile in einer Tabellenansicht (Kopfzeile = 1), je Grund höchstens 20 genannt; Fehlerliste im Ergebnis auf 500 Einträge begrenzt (Zahl im Protokoll vollständig).
+- **Mengen:** `numeric(18,3)`; Kommadezimal (`12,5`) wird akzeptiert, Tausendertrennzeichen nicht. Alle fünf Mengenfelder sind Pflicht, sonst wird die Zeile übersprungen.
+- **Zeichensatz:** UTF-8, sonst automatische Erkennung Windows-1252 / Mac Roman. Die Beispieldatei „Bestand export.csv“ ist **Mac Roman** („Stück“ = Byte `9F`); ohne Erkennung wäre daraus „Ÿ“ geworden.
+- **Zeitplaner:** `stock_cleanup()` ist angelegt und per pg_cron (täglich 03:15) eingeplant, **sofern die Erweiterung verfügbar ist**. Auf der lokalen Supabase-Instanz ist pg_cron nicht installiert (nur eine Notiz bei der Migration); dort bzw. im Produktivsystem muss die Funktion extern täglich aufgerufen werden: `select public.stock_cleanup();` (Service-Rolle).
+
+### Auffälligkeiten in der Beispieldatei „Bestand export.csv“ (3.227 Datensätze)
+- **858 Zeilen (27 %) werden übersprungen**, weil die Artikelnummer nicht dem Muster „Ziffern.Kennziffer“ entspricht: 762 wie `V554` (Buchstabe + Ziffern), 96 wie `9998` (ohne Kennziffer). Es sind genau die Zeilen mit den Einheiten „Stück“ (605), „Meter“ (153) und „Stck“ (96) — vermutlich Rohstoffe/Verpackung. Das entspricht der Spec („Zeile übersprungen und gezählt“), ist aber fachlich zu klären (siehe Open Questions).
+- Übernommen werden 2.369 Positionen mit eindeutigem Schlüssel (SSCC + Artikel); keine Duplikate, keine Fehler.
+
+### Nicht automatisch getestet
+- Die Import-Sperre (zweiter gleichzeitiger Import → 409) braucht zwei Datenbank-Sitzungen und ist nur durch Code-Review/QA abgedeckt.
+- Live-Durchlauf Oberfläche → API mit echtem Login steht noch aus (`/qa`).
 
 ## QA Test Results
 _To be added by /qa_

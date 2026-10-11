@@ -140,6 +140,9 @@ export function rowToPosition(row: Record<string, unknown>): StockPositionRow {
   }
 }
 
+export const POSITION_DETAIL_COLUMNS =
+  `${POSITION_COLUMNS}, logistics_center, stock_group, first_seen_at, checked_by_name, checked_at, check_remark, shipped_by_name, shipped_at`
+
 /** Antwort von GET stock/positions/:id (Detailansicht inkl. Prüf-/Versandinfo und Import-Verlauf). */
 export interface StockPositionDetail extends StockPositionRow {
   logisticsCenter: string | null
@@ -151,6 +154,25 @@ export interface StockPositionDetail extends StockPositionRow {
   shippedByName: string | null
   shippedAt: string | null
   imports: { id: string; fileName: string; userName: string | null; createdAt: string }[]
+}
+
+/** Zeile aus `stock_position_list` (mit POSITION_DETAIL_COLUMNS) + Import-Verlauf → Detailantwort. */
+export function rowToPositionDetail(
+  row: Record<string, unknown>,
+  imports: StockPositionDetail["imports"]
+): StockPositionDetail {
+  return {
+    ...rowToPosition(row),
+    logisticsCenter: strOrNull(row.logistics_center),
+    stockGroup: strOrNull(row.stock_group),
+    firstSeenAt: strOrNull(row.first_seen_at),
+    checkedByName: strOrNull(row.checked_by_name),
+    checkedAt: strOrNull(row.checked_at),
+    checkRemark: strOrNull(row.check_remark),
+    shippedByName: strOrNull(row.shipped_by_name),
+    shippedAt: strOrNull(row.shipped_at),
+    imports,
+  }
 }
 
 export const POSITION_ACTION_CONFLICT_MESSAGE =
