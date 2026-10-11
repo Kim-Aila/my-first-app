@@ -348,3 +348,51 @@ describe("POST stock/positions/:id/check — remark", () => {
     expect((await res.json()).field).toBe("remark")
   })
 })
+
+describe("POST stock/imports — empty file guard", () => {
+  const emptyCsv = [
+    HEADER,
+    csvRow("BestandEnde", "<BestandEnde><anzahlDatensaetze>0</anzahlDatensaetze></BestandEnde>"),
+    csvRow("BestandStart", "<BestandStart/>"),
+  ].join("\r\n")
+
+  function emptyRequest(confirm: boolean) {
+    const bytes = new TextEncoder().encode(emptyCsv)
+    const file = { name: "leer.csv", size: bytes.length, arrayBuffer: async () => bytes.buffer as ArrayBuffer }
+    return {
+      formData: async () => ({ get: (key: string) => (key === "file" ? file : confirm ? "true" : null) }),
+    } as unknown as Request
+  }
+
+  const wiping = { ...outcome, recordCount: 0, counts: { ...outcome.counts, new: 0, missing: 7 } }
+
+  it("refuses to commit a 0-record file that would mark stock as missing (409) and saves nothing", async () => {
+    login("write")
+    server.respond("rpc:stock_import", { data: wiping })
+    const res = await IMPORT(emptyRequest(false), tenantParams)
+    expect(res.status).toBe(409)
+    expect((await res.json()).field).toBe("confirmEmpty")
+    const commits = server.rpc.mock.calls.filter(([fn, args]) => fn === "stock_import" && args?.p_commit === true)
+    expect(commits).toHaveLength(0)
+  })
+
+  it("commits it with confirmEmpty=true", async () => {
+    login("write")
+    server.respond("rpc:stock_import", { data: wiping })
+    const res = await IMPORT(emptyRequest(true), tenantParams)
+    expect(res.status).toBe(201)
+    expect(importCall()?.p_commit).toBe(true)
+  })
+
+  it("needs no confirmation when there is nothing to mark as missing", async () => {
+    login("write")
+    server.respond("rpc:stock_import", { data: { ...wiping, counts: { ...wiping.counts, missing: 0 } } })
+    expect((await IMPORT(emptyRequest(false), tenantParams)).status).toBe(201)
+  })
+
+  it("never blocks the preview", async () => {
+    login("write")
+    server.respond("rpc:stock_import", { data: wiping })
+    expect((await PREVIEW(emptyRequest(false), tenantParams)).status).toBe(200)
+  })
+})

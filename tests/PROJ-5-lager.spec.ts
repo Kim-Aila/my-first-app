@@ -218,9 +218,11 @@ function sscc() {
 // ---------------------------------------------------------------------------------------------
 // API helpers (browser session cookies via page.request)
 // ---------------------------------------------------------------------------------------------
-const upload = (page: Page, tenant: string, kind: "preview" | "commit", file: Buffer, name = "Bestand.csv") =>
+const upload = (
+  page: Page, tenant: string, kind: "preview" | "commit", file: Buffer, name = "Bestand.csv", confirmEmpty = false
+) =>
   page.request.post(`/api/tenants/${tenant}/stock/imports${kind === "preview" ? "/preview" : ""}`, {
-    multipart: { file: { name, mimeType: "text/csv", buffer: file } },
+    multipart: { file: { name, mimeType: "text/csv", buffer: file }, ...(confirmEmpty ? { confirmEmpty: "true" } : {}) },
   })
 
 interface Outcome {
@@ -262,7 +264,8 @@ const ship = (page: Page, tenant: string, id: string, data: Record<string, unkno
 
 /** Imports `rows` as a committed snapshot through the API (as the writer in `page`). */
 async function commit(page: Page, tenant: string, rows: Row[]) {
-  return ok(await upload(page, tenant, "commit", csv(rows)), 201)
+  // an empty snapshot wipes the stock and needs the explicit confirmation (BUG-2)
+  return ok(await upload(page, tenant, "commit", csv(rows), "Bestand.csv", rows.length === 0), 201)
 }
 
 // ===============================================================================================
@@ -462,6 +465,29 @@ test.describe("Import", () => {
     await expect(page.getByRole("alertdialog")).toContainText("Gesamten Bestand als fehlend markieren?")
     await page.getByRole("button", { name: "Abbrechen" }).last().click()
     expect((await positions(w.tenant)).every((p) => p.status === "in_stock")).toBe(true)
+    // confirming in the dialog sends the confirmation to the server
+    await page.getByRole("button", { name: "Trotzdem übernehmen" }).click()
+    await page.getByRole("button", { name: "Ja, übernehmen" }).click()
+    await expect(page.getByText("Import abgeschlossen")).toBeVisible()
+    expect((await positions(w.tenant)).every((p) => p.status === "missing_unchecked")).toBe(true)
+  })
+
+  test("BUG-2: the server refuses a 0-record file that would wipe the stock unless confirmed", async ({ page }, testInfo) => {
+    const w = await mkWorld(testInfo)
+    await login(page, w.username.writer)
+    // nothing to wipe → no confirmation needed
+    await ok(await upload(page, w.tenant, "commit", csv([])), 201)
+    await commit(page, w.tenant, [{ sscc: sscc(), art: "41100.0451" }, { sscc: sscc(), art: "41100.0452" }])
+
+    const refused = await upload(page, w.tenant, "commit", csv([]))
+    expect(refused.status()).toBe(409)
+    expect((await refused.json()).error).toContain("ausdrücklich bestätigt")
+    expect((await positions(w.tenant)).every((p) => p.status === "in_stock")).toBe(true)
+    expect((await upload(page, w.tenant, "commit", csv([]), "Bestand.csv", false)).status()).toBe(409)
+
+    const confirmed = await ok(await upload(page, w.tenant, "commit", csv([]), "leer.csv", true), 201)
+    expect(confirmed.counts.missing).toBe(2)
+    expect((await positions(w.tenant)).every((p) => p.status === "missing_unchecked")).toBe(true)
   })
 
   test("Edge: umlauts in a Mac Roman / Windows-1252 file are read correctly", async ({ page }, testInfo) => {

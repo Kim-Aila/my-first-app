@@ -202,7 +202,12 @@ export function ImportWizard({ tenantId }: { tenantId: string }) {
     setConfirmWipeOpen(false)
     setPhase("committing")
     setError(null)
-    const result = await apiUpload<ImportOutcome>(base, file)
+    const result = await apiUpload<ImportOutcome>(
+      base,
+      file,
+      undefined,
+      outcome && wipesStock(outcome) ? { confirmEmpty: "true" } : {}
+    )
     if (result.ok) {
       setOutcome(result.data)
       setPhase("done")

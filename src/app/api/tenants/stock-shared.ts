@@ -13,6 +13,8 @@ import { dbErrorResponse } from "./warenwirtschaft-shared"
 export const STOCK_POSITION_NOT_FOUND_MESSAGE = "Position nicht gefunden."
 export const IMPORT_FILE_MISSING_MESSAGE = "Bitte eine CSV-Datei auswählen."
 export const IMPORT_FILE_TOO_LARGE_MESSAGE = `Die Datei ist zu groß (höchstens ${IMPORT_MAX_BYTES / 1024 / 1024} MB).`
+export const IMPORT_EMPTY_CONFIRM_MESSAGE =
+  "Die Datei enthält keine Datensätze und würde den gesamten Bestand als fehlend markieren. Zum Übernehmen muss das ausdrücklich bestätigt werden (confirmEmpty)."
 const IMPORT_DUPLICATE_MESSAGE = "Die Datei enthält doppelte Positionen."
 
 export { POSITION_ACTION_CONFLICT_MESSAGE }
@@ -72,7 +74,10 @@ export async function runStockImport(
   const parsed = parseStockFile(new Uint8Array(await file.arrayBuffer()))
   if (!parsed.ok) return jsonError(400, parsed.error, "file")
 
-  const { data, error } = await supabase.rpc("stock_import", {
+  // Schutz vor versehentlichem Leeren des Bestands (auch für Schnittstelle/Agenten): eine Datei ohne
+  // Datensätze, die vorhandene Positionen als fehlend markieren würde, braucht `confirmEmpty=true`.
+  const confirmEmpty = form?.get("confirmEmpty") === "true"
+  const importArgs = {
     p_tenant_id: tenantId,
     p_file_name: file.name || "Bestand.csv",
     p_record_count: parsed.recordCount,
@@ -80,8 +85,14 @@ export async function runStockImport(
     p_excluded: parsed.excluded,
     p_skipped: parsed.skipped,
     p_errors: parsed.errors,
-    p_commit: commit,
-  })
+  }
+  if (commit && parsed.recordCount === 0 && !confirmEmpty) {
+    const dry = await supabase.rpc("stock_import", { ...importArgs, p_commit: false })
+    if (dry.error) return dbErrorResponse(dry.error, { message: IMPORT_DUPLICATE_MESSAGE })
+    if ((dry.data as ImportOutcome).counts.missing > 0) return jsonError(409, IMPORT_EMPTY_CONFIRM_MESSAGE, "confirmEmpty")
+  }
+
+  const { data, error } = await supabase.rpc("stock_import", { ...importArgs, p_commit: commit })
   if (error) return dbErrorResponse(error, { message: IMPORT_DUPLICATE_MESSAGE })
 
   return NextResponse.json(data as ImportOutcome, { status: commit ? 201 : 200 })

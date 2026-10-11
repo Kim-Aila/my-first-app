@@ -87,10 +87,12 @@ export async function apiGet<T = unknown>(url: string, signal?: AbortSignal): Pr
 export async function apiUpload<T = unknown>(
   url: string,
   file: File,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  fields: Record<string, string> = {}
 ): Promise<ApiResult<T>> {
   const body = new FormData()
   body.append("file", file)
+  for (const [key, value] of Object.entries(fields)) body.append(key, value)
 
   let res: Response
   try {
