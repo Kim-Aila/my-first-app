@@ -63,3 +63,11 @@ export const P4_OHNE = "e2e_p4_ohne" // member, role without any Warenwirtschaft
 export const P4_LEER = "e2e_p4_leer" // Adressen/Kontakte/Länder/Artikelstamm write in the empty tenant
 export const P4_FREMD = "e2e_p4_fremd" // everything in the foreign tenant only
 export const P4_BASE_CODE = "1300"
+
+// PROJ-5 fixtures. Unlike PROJ-2–4 nothing is created in global-setup: an import is a full snapshot of
+// a whole tenant, so every test builds its own tenants/roles/users (see mkWorld in the spec). Users use
+// P5_EMAIL_DOMAIN and tenants P5_TENANT_PREFIX, so teardown can sweep leftovers (tenant deletion cascades
+// to stock positions, import protocol, roles and articles).
+export const P5_EMAIL_DOMAIN = "e2e-proj5.local"
+export const P5_TENANT_PREFIX = "E2E-P5 "
+export const P5_PASSWORD = "E2E-Proj5-Pw9!"

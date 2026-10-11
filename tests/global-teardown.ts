@@ -9,6 +9,8 @@ import {
   P3_TENANT_PREFIX,
   P4_EMAIL_DOMAIN,
   P4_TENANT_PREFIX,
+  P5_EMAIL_DOMAIN,
+  P5_TENANT_PREFIX,
 } from "./fixtures"
 
 export default async function globalTeardown() {
@@ -32,7 +34,7 @@ export default async function globalTeardown() {
       const email = user.email ?? ""
       if (
         email.endsWith(`@${P2_EMAIL_DOMAIN}`) || email.endsWith(`@${P3_EMAIL_DOMAIN}`) ||
-        email.endsWith(`@${P4_EMAIL_DOMAIN}`)
+        email.endsWith(`@${P4_EMAIL_DOMAIN}`) || email.endsWith(`@${P5_EMAIL_DOMAIN}`)
       ) {
         await admin.auth.admin.deleteUser(user.id)
       }
@@ -45,7 +47,7 @@ export default async function globalTeardown() {
   for (const tenant of tenants ?? []) {
     if (
       tenant.name.startsWith(P2_TENANT_PREFIX) || tenant.name.startsWith(P3_TENANT_PREFIX) ||
-      tenant.name.startsWith(P4_TENANT_PREFIX)
+      tenant.name.startsWith(P4_TENANT_PREFIX) || tenant.name.startsWith(P5_TENANT_PREFIX)
     ) {
       await admin.from("tenants").delete().eq("id", tenant.id)
     }

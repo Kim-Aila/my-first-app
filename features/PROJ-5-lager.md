@@ -1,6 +1,6 @@
 # PROJ-5: Warenwirtschaft – Lager (Lagerebene, CSV-Import)
 
-## Status: In Progress
+## Status: Approved
 **Created:** 2026-10-11
 **Last Updated:** 2026-10-11
 
@@ -354,7 +354,40 @@ Empfohlen: `/frontend` (Reiter, Import-Assistent, LHM-Detail mit Beispieldaten) 
 - Live-Durchlauf Oberfläche → API mit echtem Login steht noch aus (`/qa`).
 
 ## QA Test Results
-_To be added by /qa_
+
+**Tested:** 2026-10-11 · **Umgebung:** lokale Supabase + Next-Dev-Server, Playwright Chromium und WebKit (Mobile Safari/iPhone 13). Firefox nicht getestet (nicht installiert).
+**Automatisiert:** 460 Vitest-Tests grün; neue E2E-Suite `tests/PROJ-5-lager.spec.ts` (48 Tests × 2 Browser, 1 erwarteter Fehlschlag = BUG-1). `tsc` und ESLint ohne Fehler. Jeder Test legt eigene Mandanten/Rollen/Nutzer an (Import = Vollabzug je Mandant), Aufräumen per `afterEach` + Teardown.
+
+### Acceptance Criteria
+**Import (9/9 bestanden):** Vorschau speichert nichts · Übernahme + Protokoll · Abbrechen ändert nichts (UI) · fehlendes BestandEnde / falsche Anzahl → Datei abgelehnt · unlesbare Dateien (binär, Text, falsche Spalten, kaputtes XML, offene Anführungszeichen, leer) abgelehnt · Status ≠ done übersprungen · Re-Import ohne Änderungen · nur Leserecht: kein Import-Reiter, API 403 · gleichzeitige Importe: nur 201/409, nie 5xx, Anzahl Protokolle = Anzahl Erfolge (*)
+**Artikelnummer/Stamm (6/6):** `41100.451`→`41100.0451` · 4-stellig unverändert · ungültige Muster übersprungen mit Zeilennummer + Grund · unbekannte Artikel geführt, „Nicht im Stamm“, Liste im Ergebnis · automatische Zuordnung nach Anlage im Stamm (mit Bezeichnung; ohne siehe BUG-1)
+**Doppelte SSCC/Mischpalette (5/5):** Mischpalette markiert · Duplikat gleicher Artikel → Fehler mit SSCC + Artikel, Rest läuft · bestehende Position bleibt unverändert und nicht „Fehlt“ · SSCC nicht numerisch übersprungen · Fehler/Übersprungene getrennt
+**Lebenszyklus (9/9):** Fehlt ungeprüft (nicht in Summen, in Prüfliste) · Wiederauftauchen → Im Lager (auch nach „geprüft“) · Prüfung mit/ohne Bemerkung · Versandbuchung · Versendet bleibt bei Fehlen · Versendet + wieder im Abzug → Fehler, Status bleibt · 5-Jahres-Bereinigung (`stock_cleanup`) · Positionsdetail inkl. Import-Verlauf
+**Anzeige (7/7), Mandanten (1/1):** Summen nur „Im Lager“ · Filter „nicht im Stamm“ · serverseitige Filter/Paginierung · Reiter „Bestand“ in der Artikelmaske (nur mit Leserecht) · Leerzustand · Zugriff ohne Recht verweigert · Mandantentrennung inkl. gleicher SSCC in zwei Mandanten
+
+**Edge Cases bestanden:** 0 Datensätze (Warnung + Zusatzbestätigung) · Mac-Roman/Windows-1252/UTF-8 · `48.0` / `12,5` · leere/negative/nichtnumerische Mengen · Mischpalette teilweise fehlend · zwei Nutzer gleichzeitig (genau einer gewinnt, anderer 409) · Datei > 25 MB abgelehnt.
+
+(*) Die Import-Sperre selbst (Advisory-Lock → 409) ließ sich per HTTP nicht deterministisch auslösen; die Logik ist per Code-Review geprüft (`pg_try_advisory_xact_lock` in `stock_import`). Unter Last wurden nur 201/409 beobachtet.
+
+### Security Audit (Red Team) — keine Critical/High-Funde
+- Direktes Schreiben auf `stock_*` durch Leser/Schreiber/anon: verweigert; `stock_cleanup` für Clients gesperrt; direkte `stock_import`-RPC: Maskenrecht + Tabellen-Constraints greifen (ungültige SSCC/Artikelnr./Mengen/Texte, Duplikate), nichts gespeichert.
+- Mandantentrennung API + DB (alle 5 Tabellen/Sichten): fremder Nutzer sieht/ändert nichts; Position fremden Mandanten über eigenen Mandanten → 404, über fremden → 403.
+- Ohne Session 401; ohne Maskenrecht 403 (Seite, API, DB leer).
+- XSS: HTML in Einheit/Logistikzentrum wird als Text angezeigt, kein Script. Such-Injection (`'; drop`, PostgREST-`or`-Syntax, Sonderzeichen): kein Fehler, nichts verändert. XML-Entity-Expansion/DOCTYPE: kein Absturz, < 10 s. Fehlerantworten ohne SQL-Details/Secrets.
+
+### Bugs
+- **BUG-1 (Medium) — Artikel ohne Bezeichnung zeigt „Nicht im Stamm“.** Die Bezeichnung ist im Artikelstamm optional. `lagerbestand/page.tsx` (Reiter „Bestand“) und `position-table.tsx` erkennen „unbekannt“ an `article_name` statt `article_id`; der Filter „nicht im Stamm“ nutzt dagegen `article_id` → Badge und Filter widersprechen sich, der Hinweis verschwindet nicht (verletzt AC „Hinweis verschwindet“). Reproduktion: Artikel ohne Bezeichnung anlegen, passende Position importieren, `/lagerbestand` öffnen. Regressionstest: `BUG-1` in der E2E-Suite (`test.fail`, schlägt nach dem Fix an → dann `test.fail` entfernen).
+- **BUG-2 (Low) — 0-Datensatz-Schutz nur in der Oberfläche.** `POST stock/imports` übernimmt eine Datei mit 0 Datensätzen ohne Zusatzbestätigung (markiert den gesamten Bestand als fehlend). Für spätere Agenten/Schnittstelle ggf. serverseitigen Schutz (z. B. Bestätigungsparameter) ergänzen.
+- **Hinweis Deployment (kein Bug):** `pg_cron` ist lokal nicht installiert; `stock_cleanup()` muss im Produktivsystem täglich eingeplant werden (siehe Implementation Notes). Fachlich offen bleibt die Open Question zu Artikelnummern ohne Kennziffer (27 % der Beispieldatei werden übersprungen).
+
+### Regression
+PROJ-1–4: 460 Unit-Tests grün; Artikelmaske (PROJ-3) mit neuem Reiter „Bestand“ geprüft (Reiter ohne Leserecht nicht vorhanden). E2E-Suites PROJ-1–4 nicht erneut vollständig ausgeführt.
+
+### Responsive
+375 / 768 / 1440 px auf allen vier Reitern: kein horizontaler Seitenüberlauf (Screenshots in `test-results`).
+
+### Entscheidung
+**Production-ready: JA** — keine Critical/High-Bugs. Empfehlung: BUG-1 vor dem Deploy beheben (kleiner Fix).
 
 ## Deployment
 _To be added by /deploy_
