@@ -19,7 +19,7 @@
 | PROJ-2 | Benutzerverwaltung & Rollen-/Rechtesystem (pro Maske einstellbar) | P0 | PROJ-1 | Deployed | [PROJ-2](PROJ-2-benutzerverwaltung-rollen-rechte.md) | 2026-09-27 |
 | PROJ-3 | Warenwirtschaft – Artikelstamm | P0 | PROJ-1, PROJ-2 | Deployed | [PROJ-3](PROJ-3-artikelstamm.md) | 2026-09-27 |
 | PROJ-4 | Warenwirtschaft – Adressen | P1 | PROJ-1, PROJ-2 | Deployed | [PROJ-4](PROJ-4-adressen.md) | 2026-09-27 |
-| PROJ-5 | Warenwirtschaft – Lager | P1 | PROJ-1, PROJ-2, PROJ-3 | Roadmap | - | 2026-09-27 |
+| PROJ-5 | Warenwirtschaft – Lager (Lagerebene, CSV-Import) | P1 | PROJ-1, PROJ-2, PROJ-3 | Planned | [PROJ-5](PROJ-5-lager.md) | 2026-09-27 |
 | PROJ-6 | Warenwirtschaft – Einkauf | P1 | PROJ-1, PROJ-2, PROJ-3, PROJ-4 | Roadmap | - | 2026-09-27 |
 | PROJ-7 | Warenwirtschaft – Verkauf | P1 | PROJ-1, PROJ-2, PROJ-3, PROJ-4 | Roadmap | - | 2026-09-27 |
 | PROJ-8 | Produktionsplanung | P1 | PROJ-1, PROJ-2, PROJ-3, PROJ-5, PROJ-11 | Roadmap | - | 2026-09-27 |
@@ -27,7 +27,8 @@
 | PROJ-10 | Agenten-Automatisierungs-Layer | P2 | PROJ-1, PROJ-2 | Roadmap | - | 2026-09-27 |
 | PROJ-11 | Warenwirtschaft – Stücklisten/Rezepturen | P1 | PROJ-1, PROJ-2, PROJ-3 | Roadmap | - | 2026-09-30 |
 | PROJ-12 | Formular-Konfigurationssystem (konfigurierbare Pflichtfelder je Artikeltyp/Maske) | P2 | PROJ-2, PROJ-3 | Roadmap | - | 2026-10-04 |
+| PROJ-13 | Warenwirtschaft – Artikel-Export zum Lagersystem (Artikelstamm an Lager übertragen) | P2 | PROJ-3, PROJ-5 | Roadmap | - | 2026-10-11 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-13
+## Next Available ID: PROJ-14

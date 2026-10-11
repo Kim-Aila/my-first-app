@@ -17,7 +17,7 @@ Ein modulares ERP-System für eine Schokoladenfabrik (Manufaktur), das schrittwe
 | P1 | Warenwirtschaft – Adressen | Deployed |
 | P1 | Warenwirtschaft – Einkauf | Roadmap |
 | P1 | Warenwirtschaft – Verkauf | Roadmap |
-| P1 | Warenwirtschaft – Lager | Roadmap |
+| P1 | Warenwirtschaft – Lager | Planned |
 | P1 | Produktionsplanung | Roadmap |
 | P2 | Wartung (Aufgabenplanung & Team-Verteilung) | Roadmap |
 | P2 | Agenten-Automatisierung (agentensteuerbare Prozesse) | Roadmap |
