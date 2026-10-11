@@ -1,6 +1,6 @@
 # PROJ-5: Warenwirtschaft – Lager (Lagerebene, CSV-Import)
 
-## Status: Planned
+## Status: Architected
 **Created:** 2026-10-11
 **Last Updated:** 2026-10-11
 
@@ -140,6 +140,7 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 - [ ] Einheitenprüfung und Pflichtfeld „Einheit" im Artikelstamm (später, `/refine PROJ-3`); bis dahin ist die Einheit nur gespeichert
 - [ ] Losnummer, MHD, Lagerbereich/Lagerort: Dateiformat und Verwendung, sobald die Felder im XML geliefert werden (`/refine PROJ-5`)
 - [ ] Bedeutung von `rlzMenge` (derzeit ignoriert)
+- [ ] Zeitplaner für die 5-Jahres-Bereinigung im Self-hosted-Supabase (pg_cron oder externer Aufruf) — in `/backend` klären
 
 ## Decision Log
 
@@ -168,11 +169,128 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 <!-- Added by /architecture -->
 | Decision | Rationale | Date |
 |----------|-----------|------|
+| Bestand in eigenen Tabellen, nicht im Artikelstamm | Bestand ändert sich ständig; später zweite Quelle (Datenbankschnittstelle) füllt dieselbe Tabelle | 2026-10-11 |
+| Zuordnung zum Artikel über die Artikelnummer statt gespeichertem Verweis | Unbekannte Artikel werden später automatisch zugeordnet, keine Nachpflege | 2026-10-11 |
+| Mischpalette und Bestandssummen werden abgeleitet, nicht gespeichert | Kein Auseinanderlaufen von Daten; eine Quelle | 2026-10-11 |
+| Vorschau ohne Zwischenspeicher; Datei wird bei Übernahme erneut gesendet und serverseitig neu berechnet | Kein Datenmüll bei Abbruch, „nichts gespeichert bis Bestätigung" garantiert; Dateigröße unkritisch | 2026-10-11 |
+| Übernahme als eine Datenbank-Transaktion mit Import-Sperre pro Mandant | Atomar (ganz oder gar nicht), kein paralleler Import | 2026-10-11 |
+| Prüfung/Versandbuchung ohne Bearbeitungssperre, stattdessen Statusprüfung beim Speichern | Kurze Aktion ohne Formular; Konflikte werden per Hinweis gelöst | 2026-10-11 |
+| Mengen als exakte Dezimalzahlen | Keine Rundungsfehler bei Summen | 2026-10-11 |
+| 5-Jahres-Bereinigung als täglich laufende Datenbank-Aufgabe | Unabhängig von Nutzeraktionen; Zeitplaner im Self-hosted-Setup in `/backend` klären | 2026-10-11 |
+| Neue Pakete: CSV-Leser (papaparse) und XML-Leser (fast-xml-parser) | Zuverlässiges Lesen von Semikolon-CSV mit Umlauten und XML in Spalte | 2026-10-11 |
+| Eine Maske „Lagerbestand" mit 4 Reitern (Bestand je Artikel, LHM-Liste, Prüfliste, Import) | Eine Rechte-Einheit, passt zur Spec (Maske „Lagerbestand") | 2026-10-11 |
 
 ---
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+### A) Komponentenstruktur
+
+```
+Sidebar → Warenwirtschaft
+└── NEU: Lagerbestand (eine Maske "Lagerbestand", sichtbar bei Leserecht)
+
+Lagerbestand – Seite mit 4 Reitern
+├── Kopfbereich: Titel + Hinweis "Letzter Import: <Datum, Nutzer>"
+├── Leerzustand (wenn noch kein Bestand): Hinweis + Link zum Reiter "Import"
+│
+├── Reiter "Bestand je Artikel"
+│   ├── Suche (Artikelnummer / Bezeichnung) + Filter "Artikel nicht im Stamm"
+│   ├── Tabelle: Artikelnummer, Bezeichnung, Bestand, Gesperrt QS, Gesperrt,
+│   │            Gesperrt gesamt, Verfügbar  (Badge "Nicht im Stamm")
+│   └── Seitenwechsel
+│
+├── Reiter "LHM-Liste"
+│   ├── Suche (SSCC / Artikelnummer) + Filter (Status, Mischpalette)
+│   ├── Tabelle: SSCC, Artikelnummer, Menge, Status-Badge, Mischpalette-Badge,
+│   │            zuletzt im Abzug gesehen
+│   ├── Seitenwechsel
+│   └── LHM-Detail (Seitenpanel)
+│       ├── Daten (alle Mengen, Einheit, Logistikzentrum, Bestandslagergruppe)
+│       ├── Status, Prüfinfo (Prüfer, Zeit, Bemerkung), Versandinfo
+│       ├── Verlauf: Importe, in denen die Position vorkam
+│       └── Aktionen (nur Schreibrecht, nur bei "Fehlt"): Geprüft i.O. | Als versendet buchen
+│
+├── Reiter "Prüfliste" (fehlende, ungeprüfte LHM; Anzahl als Zähler am Reiter)
+│   ├── Tabelle der Positionen "Fehlt, ungeprüft"
+│   └── Aktionen je Zeile (nur Schreibrecht):
+│       ├── Dialog "Geprüft i.O." (Bemerkung optional)
+│       └── Bestätigung "Als versendet buchen"
+│
+└── Reiter "Import" (Aktionen nur mit Schreibrecht)
+    ├── Schritt 1: Datei wählen (CSV) + Wartezustand/Fortschritt
+    ├── Schritt 2: Vorschau
+    │   ├── Zahlenübersicht: neu / geändert / unverändert / fehlend / wieder aufgetaucht
+    │   ├── Warnung bei 0 Datensätzen ("würde gesamten Bestand als fehlend markieren")
+    │   ├── Fehler (mit SSCC + Artikel) und übersprungene Zeilen (Anzahl + Grund) – getrennt
+    │   ├── Liste unbekannter Artikelnummern
+    │   └── Buttons: Übernehmen | Abbrechen
+    ├── Schritt 3: Ergebnis (gleiche Zahlen wie Vorschau, nun gespeichert)
+    └── Import-Protokoll: Liste früherer Importe (Datei, Nutzer, Zeit, Zahlen)
+
+Artikelmaske (bestehend, PROJ-3) – Erweiterung
+└── NEU: Reiter "Bestand" (schreibgeschützt: Bestand, Gesperrt QS, Gesperrt,
+         Gesperrt gesamt, Verfügbar) – nur sichtbar mit Leserecht auf "Lagerbestand"
+```
+
+Wiederverwendet (nichts Neues bauen): Tabelle, Seitenwechsel, Reiter, Seitenpanel (Sheet), Dialoge, Status-Badge, Leer-/Fehlerzustände, Alert, Fortschrittsbalken. Neu zu bauen sind nur die fachlichen Bausteine (Import-Assistent, LHM-Detail, Prüf-Dialog).
+
+### B) Datenmodell (in einfacher Sprache)
+
+**LHM-Position** (gehört zu genau einem Mandanten; pro Mandant eindeutig durch SSCC + Artikelnummer, von der Datenbank erzwungen):
+- SSCC, umgewandelte Artikelnummer (als Text, 4-stellige Kennziffer)
+- Mengen: Menge, Freie Menge, Menge QS, Sperrmenge, QS und Sperre gesamt; Einheit (nur Text)
+- Logistikzentrum, Bestandslagergruppe (reine Infofelder)
+- Status (Im Lager / Fehlt ungeprüft / Fehlt geprüft i.O. / Versendet)
+- Prüfung: Prüfer, Zeitpunkt, Bemerkung; Versandbuchung: Zeitpunkt, Nutzer
+- Erstmals gesehen, zuletzt im Abzug gesehen, letzte Änderung (Basis der 5-Jahres-Frist), letzter Import
+- **Kein gespeicherter Verweis auf den Artikelstamm.** Die Zuordnung entsteht beim Anzeigen über die Artikelnummer. So gehört der Bestand sofort zum Artikel, sobald er im Stamm angelegt wird, und „Artikel nicht im Stamm" verschwindet von selbst – ohne Nachpflege-Job.
+- „Mischpalette" wird **nicht gespeichert**, sondern bei der Anzeige abgeleitet (SSCC hat mehrere Positionen).
+
+**Import-Protokoll** (pro Mandant): Dateiname, Nutzer, Zeitpunkt, Zahlen (neu / geändert / unverändert / fehlend / wieder aufgetaucht), übersprungene Zeilen mit Grund, Fehler mit SSCC/Artikel, Liste unbekannter Artikelnummern.
+
+**Import-Verlauf je Position:** Welche Position in welchem Import vorkam – speist den Verlauf im LHM-Detail. Wird mit der Position nach 5 Jahren mitbereinigt.
+
+**Bestand je Artikel:** wird nicht gespeichert, sondern bei jeder Anzeige als Summe über „Im Lager"-Positionen berechnet (Datenbank-Sicht). Dadurch kann nichts auseinanderlaufen.
+
+**Neue Maske im Masken-Register:** „Lagerbestand" (Modul Warenwirtschaft). Zugriffsstufen (Lesen / Lesen + Bearbeiten) wie in PROJ-3. Vorschlag Standardrechte laut Decision Log.
+
+**Speicherort:** Lokale, selbst gehostete PostgreSQL (Supabase); alle Tabellen tragen den Mandanten und sind per RLS getrennt.
+
+### C) Ablauf des Imports (fachlich)
+
+1. **Vorschau (Schritt 1+2):** Der Server liest die Datei, prüft sie (Plausibilität, Zeilen, Artikelnummern, Duplikate), vergleicht mit dem aktuellen Bestand und liefert nur die Zahlen/Listen zurück. **Es wird nichts gespeichert.**
+2. **Übernahme (Schritt 3):** Die Datei wird erneut gesendet; der Server rechnet identisch nach und speichert alles in **einem einzigen, unteilbaren Vorgang** (ganz oder gar nicht). Währenddessen ist der Import für den Mandanten gesperrt – ein zweiter Import wird mit Hinweis abgelehnt.
+3. **Regeln beim Vergleich:** Neue Positionen anlegen; geänderte Mengen aktualisieren; fehlende „Im Lager"-Positionen → „Fehlt, ungeprüft"; wieder auftauchende „Fehlt"-Positionen → „Im Lager"; „Versendet" bleibt unangetastet (taucht sie wieder auf → Fehler mit SSCC); Positionen, die als Duplikat fehlerhaft sind, bleiben unverändert und werden nicht als fehlend markiert.
+
+### D) Technische Entscheidungen (für PM verständlich)
+
+1. **Lagerbestand als eigene Tabellen, nicht im Artikelstamm** — Der Artikelstamm bleibt Stammdaten; Bestand ändert sich ständig und kommt später aus einer anderen Quelle (Datenbankschnittstelle). Beide Wege füllen dieselbe Tabelle.
+2. **Keine feste Verknüpfung zum Artikel, sondern Zuordnung über die Artikelnummer** — Erfüllt „Bestand unbekannter Artikel sichtbar, später automatisch zugeordnet" ohne Sonderlogik. Kosten: die Artikelnummer muss im Stamm pro Mandant eindeutig sein (ist sie bereits).
+3. **Dateiprüfung und Vergleich auf dem Server** — Der Browser wird nicht vertraut (Sicherheit); dieselbe Logik dient später der Schnittstelle und Agenten. Die Rohdatei wird nicht dauerhaft gespeichert, nur das Protokoll.
+4. **Vorschau ohne Zwischenspeicher: Datei wird bei Übernahme erneut gesendet** — Einfacher und robuster als eine Zwischentabelle (kein Aufräumen, kein Datenmüll bei Browser-Abbruch). Bei ca. 3.200–5.000 Positionen (wenige MB) ist das unkritisch. Garantiert zugleich, dass „nichts gespeichert wird", bis bestätigt ist.
+5. **Übernahme als eine Datenbank-Transaktion** — Sichert „ganz oder gar nicht" auch bei Netzwerkfehlern und lässt sich in einer Datenbankfunktion mit gutem Tempo (Mengenoperation statt Zeile für Zeile) ausführen.
+6. **Import-Sperre pro Mandant in der Datenbank** — Verhindert zwei gleichzeitige Importe, auch bei zwei Servern/Tabs; die Sperre endet automatisch mit dem Vorgang.
+7. **Gleichzeitige Prüfung/Buchung durch zwei Nutzer: Statusprüfung beim Speichern** — Die Aktion gelingt nur, wenn die Position noch im erwarteten Status ist; sonst Hinweis „Status hat sich geändert". Keine Bearbeitungssperre nötig (Aktion ist kurz, kein Formular).
+8. **Bestandssummen als Datenbank-Sicht** — Immer aktuell, eine Quelle für Bestandsliste und Artikelreiter; serverseitig gefiltert und seitenweise geladen. Index auf Mandant + Artikelnummer und auf SSCC.
+9. **5-Jahres-Bereinigung als täglich laufende Datenbank-Aufgabe** — Läuft unabhängig von Nutzeraktionen. *Hinweis:* Self-hosted Supabase braucht dafür einen Zeitplaner (z.B. pg_cron); falls nicht vorhanden, reicht ein einfacher externer Aufruf. Wird im `/backend`-Schritt geklärt.
+10. **Rechte pro Maske serverseitig + RLS** — Gleiches Muster wie PROJ-2/3: Lesen für Ansicht, „Lesen + Bearbeiten" für Import, Prüfung, Versandbuchung. Der Reiter „Bestand" in der Artikelmaske richtet sich nach dem Recht auf „Lagerbestand".
+11. **Getrennte, API-fähige Aktionen** — Vorschau, Übernahme, Prüfen, Versand buchen, Bestandsabfrage sind jeweils eigene Endpunkte unter dem Mandanten (gleiches Muster wie Artikel/Adressen). Die spätere Schnittstelle ruft dieselbe Fachlogik auf.
+12. **Beträge als exakte Dezimalzahlen** — Mengen wie `48.0` werden ohne Rundungsfehler gespeichert und summiert.
+
+### E) Abhängigkeiten (Pakete)
+- **CSV-Leser** (z.B. `papaparse`) — liest Semikolon-CSV mit Umlauten und Anführungszeichen zuverlässig.
+- **XML-Leser** (z.B. `fast-xml-parser`) — liest die Nutzdaten in der Spalte „Daten".
+- Sonst keine; Zod und shadcn/ui sind vorhanden.
+
+### F) Auswirkungen auf bestehende Teile
+- **PROJ-3 (Artikelmaske):** neuer Reiter „Bestand" (schreibgeschützt).
+- **PROJ-2:** neue Maske „Lagerbestand" im Masken-Register; Standardrechte für Lager/Einkauf/Verkauf/Produktion.
+- **Sidebar:** neuer Eintrag in „Warenwirtschaft".
+- **Keine Änderung** an bestehenden Artikeldaten.
+
+### G) Umsetzungsreihenfolge
+Empfohlen: `/frontend` (Reiter, Import-Assistent, LHM-Detail mit Beispieldaten) → `/backend` (Tabellen, Import-Logik, Rechte, Bereinigung) → `/qa`.
 
 ## QA Test Results
 _To be added by /qa_
