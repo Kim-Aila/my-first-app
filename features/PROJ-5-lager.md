@@ -100,6 +100,7 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 - [ ] Angenommen ein Nutzer bestätigt eine Prüfung ohne Bemerkung, wenn er speichert, dann ist die Bemerkung optional und die Prüfung wird gespeichert
 - [ ] Angenommen eine Position ist „Fehlt, ungeprüft", wenn ein Nutzer sie manuell als versendet bucht, dann erhält sie den Status „Versendet" mit Zeitpunkt und Nutzer und die Fehlt-Markierung entfällt
 - [ ] Angenommen eine Position hat den Status „Versendet", wenn sie später im Vollabzug nicht mehr vorkommt, dann bleibt sie „Versendet" und wird nicht als fehlend markiert
+- [ ] Angenommen eine Position hat den Status „Versendet", wenn sie im Vollabzug wieder vorkommt, dann wird die Zeile übersprungen, die Position bleibt „Versendet" und eine Fehlermeldung nennt die betroffene SSCC (und den Artikel); die übrigen Zeilen werden verarbeitet
 - [ ] Angenommen die letzte Änderung einer Position liegt mehr als 5 Jahre zurück, wenn die Bereinigung läuft, dann wird sie entfernt; Positionen mit jüngerer letzter Änderung bleiben
 - [ ] Angenommen eine Position wurde importiert, wenn ein Nutzer sie öffnet, dann sieht er ihre Daten, Status, Prüf- und Versandinformationen sowie die Importe, in denen sie vorkam
 
@@ -135,7 +136,7 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 
 ## Open Questions
 - [x] ~~Beginn der 5-Jahres-Frist?~~ → 2026-10-11: ab der letzten Änderung des Datensatzes
-- [ ] Soll ein als „Versendet" gebuchtes LHM, das im nächsten Vollabzug wieder auftaucht, automatisch auf „Im Lager" zurückgesetzt werden (Annahme dieses Entwurfs: ja, mit Hinweis im Protokoll)?
+- [x] ~~Soll ein als „Versendet" gebuchtes LHM, das im Vollabzug wieder auftaucht, auf „Im Lager" zurückgesetzt werden?~~ → 2026-10-11: Nein, Fehlermeldung mit SSCC; Status bleibt „Versendet"
 - [ ] Einheitenprüfung und Pflichtfeld „Einheit" im Artikelstamm (später, `/refine PROJ-3`); bis dahin ist die Einheit nur gespeichert
 - [ ] Losnummer, MHD, Lagerbereich/Lagerort: Dateiformat und Verwendung, sobald die Felder im XML geliefert werden (`/refine PROJ-5`)
 - [ ] Bedeutung von `rlzMenge` (derzeit ignoriert)
@@ -150,6 +151,7 @@ Die Bestandsführung auf **Systemebene** (Reserviert für Versand, Bedarf für A
 | Logistikzentrum ist nur Infofeld, nicht Lagerort; Lagerort kommt später in die Datei | Nutzervorgabe | 2026-10-11 |
 | LHM werden nie gelöscht, 5 Jahre aufbewahrt; fehlende LHM werden markiert statt entfernt | Nachvollziehbarkeit; Versandbuchung kann verspätet eintreffen | 2026-10-11 |
 | Status: Im Lager / Fehlt, ungeprüft / Fehlt, geprüft i.O. / Versendet; fehlende LHM müssen aktiv geprüft werden | Nutzervorgabe | 2026-10-11 |
+| Bereits versendetes LHM im Vollabzug = Fehler mit SSCC-Meldung, kein automatisches Zurücksetzen auf „Im Lager" | Nutzerentscheidung; Widerspruch zwischen Versandbuchung und Lagerdaten soll im Lagersystem geklärt werden | 2026-10-11 |
 | Aufbewahrungsfrist von 5 Jahren beginnt mit der letzten Änderung des Datensatzes | Nutzerentscheidung | 2026-10-11 |
 | Manuelle Versandbuchung als Übergangslösung | Ablauf vor Anbindung der Schnittstelle testbar | 2026-10-11 |
 | Import mit Vorschau und Plausibilitätsprüfung (BestandEnde, anzahlDatensaetze) | Schutz vor unvollständigen Dateien, die den ganzen Bestand als fehlend markieren würden | 2026-10-11 |
