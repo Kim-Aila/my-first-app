@@ -1,6 +1,6 @@
 # PROJ-5: Warenwirtschaft – Lager (Lagerebene, CSV-Import)
 
-## Status: Approved
+## Status: Deployed
 **Created:** 2026-10-11
 **Last Updated:** 2026-10-11
 
@@ -390,4 +390,16 @@ PROJ-1–4: 460 Unit-Tests grün; Artikelmaske (PROJ-3) mit neuem Reiter „Best
 **Production-ready: JA** — keine Critical/High-Bugs. BUG-1 und BUG-2 sind behoben (100 E2E-Tests, 464 Unit-Tests grün).
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-10-11
+**Ziel:** wie bei PROJ-1 bis 4 der selbst gehostete Docker-Container `my-first-app-app-1` (nicht Vercel, laut PRD lokal), neu gebaut und neu erstellt; dahinter die lokale, selbst gehostete Supabase-Instanz. Die Migrationen `20261011100000` und `20261011100100` sind angewendet (`supabase_migrations.schema_migrations`).
+**Zugriff:** `http://localhost:3001` (nur an `127.0.0.1` gebunden)
+**Git-Tag:** `v1.5.0-PROJ-5` (lokal; nicht gepusht, wie bisher)
+
+**Pre-Deployment-Checks (alle bestanden):** `npm run lint` sauber · `npm test` 464/464 · `npm run build` erfolgreich, neue Routen vorhanden (`/lagerbestand`, `/api/tenants/[tenantId]/stock/imports|imports/preview|positions/[positionId]|…/check|…/ship`) · QA Approved, BUG-1 und BUG-2 behoben, keine Critical/High-Bugs · keine neuen Umgebungsvariablen, keine Secrets committet.
+
+**Verifikation gegen `http://localhost:3001`:** `/login` 200; `/lagerbestand` und `/artikelstamm` ohne Anmeldung 307 auf Login; `POST …/stock/imports` ohne Session 401; `tests/PROJ-5-lager.spec.ts` (Chromium) gegen den Container: 50/50 bestanden, Testdaten bereinigt; keine Fehler in den Container-Logs.
+
+**Täglicher Bereinigungsjob:** pg_cron-Job `proj5-stock-cleanup` (03:15, `select public.stock_cleanup()`) ist in der lokalen Datenbank aktiv (manuell angelegt, siehe QA). Auf einem neu aufgesetzten System mit `select * from cron.job;` prüfen und bei Bedarf `select cron.schedule('proj5-stock-cleanup','15 3 * * *','select public.stock_cleanup()');` ausführen.
+
+**Weiterhin offen (bestehende Schuld, nicht durch PROJ-5):** Fehler-Tracking und Security-Header (`docs/production/`) nicht eingerichtet; kein Rate-Limiting; nicht auf das GitHub-Remote gepusht. Fachlich offen: Artikelnummern ohne Kennziffer-Format (siehe Open Questions).
